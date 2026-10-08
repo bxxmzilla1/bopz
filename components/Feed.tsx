@@ -82,26 +82,34 @@ export default function Feed({ userId }: { userId: string }) {
     try {
       const { data, error } = await supabase
         .from("videos")
-        .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
+        .select("*")
         .order("created_at", { ascending: false })
         .limit(CATALOG_LIMIT);
       if (error) throw error;
-      const rows = data ?? [];
+      const rows = (data ?? []) as Omit<FeedVideo, "url" | "thumb_url">[];
 
-      const urls: (string | null)[] = [];
-      for (let i = 0; i < rows.length; i += SIGN_BATCH) {
-        const chunk = rows.slice(i, i + SIGN_BATCH);
-        const { data: signed } = await supabase.storage.from(VIDEO_BUCKET).createSignedUrls(
-          chunk.map((r) => r.storage_path),
-          SIGNED_URL_TTL
-        );
-        chunk.forEach((_, j) => urls.push(signed?.[j]?.signedUrl ?? null));
-      }
+      const sign = async (paths: string[]) => {
+        const out: (string | null)[] = [];
+        for (let i = 0; i < paths.length; i += SIGN_BATCH) {
+          const chunk = paths.slice(i, i + SIGN_BATCH);
+          const { data: signed } = await supabase.storage
+            .from(VIDEO_BUCKET)
+            .createSignedUrls(chunk, SIGNED_URL_TTL);
+          chunk.forEach((_, j) => out.push(signed?.[j]?.signedUrl ?? null));
+        }
+        return out;
+      };
+      const withThumb = rows.filter((r) => r.thumb_path);
+      const [urls, thumbs] = await Promise.all([
+        sign(rows.map((r) => r.storage_path)),
+        sign(withThumb.map((r) => r.thumb_path!)),
+      ]);
+      const thumbById = new Map(withThumb.map((r, i) => [r.id, thumbs[i]]));
 
       const { data: likes } = await supabase.from("likes").select("video_id").eq("user_id", userId);
 
       const map: Record<string, FeedVideo> = {};
-      rows.forEach((r, i) => (map[r.id] = { ...r, url: urls[i] }));
+      rows.forEach((r, i) => (map[r.id] = { ...r, url: urls[i], thumb_url: thumbById.get(r.id) ?? null }));
 
       // Forget deleted videos so the seen list doesn't grow forever.
       const remembered = loadSeen(userId);

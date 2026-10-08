@@ -13,7 +13,9 @@ export type FeedVideo = {
   created_at: string;
   link_url: string | null;
   link_label: string | null;
+  thumb_path?: string | null;
   url: string | null;
+  thumb_url?: string | null;
 };
 
 type Props = {
@@ -120,6 +122,7 @@ export default function VideoCard({
       <video
         ref={videoRef}
         src={near && video.url ? video.url : undefined}
+        poster={near ? video.thumb_url ?? undefined : undefined}
         loop
         playsInline
         muted

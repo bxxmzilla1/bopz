@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabase, VIDEO_BUCKET } from "@/lib/supabase";
 import { formatCount } from "@/lib/device";
 import { COUNTRY_CODES, countryFlag, countryName } from "@/lib/countries";
+import { captureThumbnail, thumbPathFor, uploadThumbnail } from "@/lib/thumbnail";
 
 type AdminVideo = {
   id: string;
@@ -15,7 +16,9 @@ type AdminVideo = {
   created_at: string;
   link_url: string | null;
   link_label: string | null;
+  thumb_path?: string | null;
   url?: string;
+  thumb_url?: string;
 };
 
 function normalizeLink(input: string): string | null {
@@ -309,20 +312,28 @@ function Dashboard({ session }: { session: Session }) {
 
   const refreshVideos = useCallback(async () => {
     const supabase = getSupabase();
-    const { data } = await supabase
-      .from("videos")
-      .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
-      .order("created_at", { ascending: false })
-      .limit(1000);
+    // "*" keeps this working whether or not newer columns (like thumb_path) exist yet.
+    const { data } = await supabase.from("videos").select("*").order("created_at", { ascending: false }).limit(1000);
     const rows = (data ?? []) as AdminVideo[];
-    for (let i = 0; i < rows.length; i += 100) {
-      const chunk = rows.slice(i, i + 100);
-      const { data: signed } = await supabase.storage.from(VIDEO_BUCKET).createSignedUrls(
-        chunk.map((r) => r.storage_path),
-        60 * 60 * 2
-      );
-      chunk.forEach((r, j) => (r.url = signed?.[j]?.signedUrl ?? undefined));
-    }
+
+    // Signing only creates links; nothing is downloaded until a thumbnail or preview is shown.
+    const sign = async (paths: string[]) => {
+      const out: (string | undefined)[] = [];
+      for (let i = 0; i < paths.length; i += 100) {
+        const { data: signed } = await supabase.storage
+          .from(VIDEO_BUCKET)
+          .createSignedUrls(paths.slice(i, i + 100), 60 * 60 * 2);
+        paths.slice(i, i + 100).forEach((_, j) => out.push(signed?.[j]?.signedUrl ?? undefined));
+      }
+      return out;
+    };
+    const withThumb = rows.filter((r) => r.thumb_path);
+    const [videoUrls, thumbUrls] = await Promise.all([
+      sign(rows.map((r) => r.storage_path)),
+      sign(withThumb.map((r) => r.thumb_path!)),
+    ]);
+    rows.forEach((r, i) => (r.url = videoUrls[i]));
+    withThumb.forEach((r, i) => (r.thumb_url = thumbUrls[i]));
     setVideos(rows);
   }, []);
 
@@ -899,16 +910,30 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
         .upload(path, file, { contentType: file.type || "video/mp4", cacheControl: "31536000", upsert: false });
       if (uploadError) throw uploadError;
 
-      const { error: insertError } = await supabase.from("videos").insert({
+      // The thumbnail comes from the local file, so it costs no extra download.
+      setStatus({ kind: "info", text: "Creating thumbnail…" });
+      const localUrl = URL.createObjectURL(file);
+      const thumb = await captureThumbnail(localUrl);
+      URL.revokeObjectURL(localUrl);
+      const thumbPath = thumbPathFor(path);
+      const hasThumb = !!thumb && (await uploadThumbnail(thumbPath, thumb));
+
+      const row: Record<string, string | number | null> = {
         storage_path: path,
         title: title.trim() || null,
         description: description.trim() || null,
         link_url: button.link_url,
         link_label: button.link_label,
         likes_count: likesCount,
-      });
+      };
+      let { error: insertError } = await supabase
+        .from("videos")
+        .insert(hasThumb ? { ...row, thumb_path: thumbPath } : row);
+      if (insertError && hasThumb && /thumb_path/.test(insertError.message)) {
+        ({ error: insertError } = await supabase.from("videos").insert(row));
+      }
       if (insertError) {
-        await supabase.storage.from(VIDEO_BUCKET).remove([path]);
+        await supabase.storage.from(VIDEO_BUCKET).remove(hasThumb ? [path, thumbPath] : [path]);
         throw insertError;
       }
 
@@ -983,10 +1008,39 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
   const [page, setPage] = useState(0);
   const [previewing, setPreviewing] = useState<AdminVideo | null>(null);
   const [editing, setEditing] = useState<AdminVideo | null>(null);
+  const [localThumbs, setLocalThumbs] = useState<Record<string, string>>({});
+  const attempted = useRef<Set<string>>(new Set());
+  const backfillBlocked = useRef(false);
 
   const pages = Math.max(1, Math.ceil(videos.length / PER_PAGE));
   const current = Math.min(page, pages - 1);
   const shown = videos.slice(current * PER_PAGE, current * PER_PAGE + PER_PAGE);
+
+  // Videos uploaded before thumbnails existed get one made once, one at a time,
+  // and saved so they never need the video downloaded for the grid again.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      for (const v of shown) {
+        if (cancelled || backfillBlocked.current) return;
+        if (v.thumb_url || !v.url || attempted.current.has(v.id)) continue;
+        attempted.current.add(v.id);
+
+        const blob = await captureThumbnail(v.url, { crossOrigin: true });
+        if (!blob || cancelled) continue;
+        const path = thumbPathFor(v.storage_path);
+        if (!(await uploadThumbnail(path, blob))) continue;
+        const { error } = await getSupabase().from("videos").update({ thumb_path: path }).eq("id", v.id);
+        if (error) backfillBlocked.current = true;
+        const objectUrl = URL.createObjectURL(blob);
+        setLocalThumbs((t) => ({ ...t, [v.id]: objectUrl }));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current, videos]);
 
   if (videos.length === 0) {
     return (
@@ -1003,6 +1057,7 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
           <VideoTile
             key={v.id}
             video={v}
+            thumbUrl={v.thumb_url ?? localThumbs[v.id]}
             onPreview={() => setPreviewing(v)}
             onEdit={() => setEditing(v)}
             onDeleted={onChanged}
@@ -1026,9 +1081,16 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
         </div>
       )}
 
-      {previewing && (
+        {previewing && (
         <Modal onClose={() => setPreviewing(null)}>
-          <video className="preview-video" src={previewing.url} controls autoPlay playsInline />
+          <video
+            className="preview-video"
+            src={previewing.url}
+            poster={previewing.thumb_url ?? localThumbs[previewing.id]}
+            controls
+            autoPlay
+            playsInline
+          />
           <div className="modal-caption">{previewing.title || "Untitled"}</div>
         </Modal>
       )}
@@ -1051,11 +1113,13 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
 
 function VideoTile({
   video,
+  thumbUrl,
   onPreview,
   onEdit,
   onDeleted,
 }: {
   video: AdminVideo;
+  thumbUrl?: string;
   onPreview: () => void;
   onEdit: () => void;
   onDeleted: () => void;
@@ -1071,14 +1135,22 @@ function VideoTile({
       setBusy(false);
       return;
     }
-    await supabase.storage.from(VIDEO_BUCKET).remove([video.storage_path]);
+    await supabase.storage
+      .from(VIDEO_BUCKET)
+      .remove(video.thumb_path ? [video.storage_path, video.thumb_path] : [video.storage_path]);
     onDeleted();
   }
 
   return (
     <div className="vtile">
       <button className="vthumb" onClick={onPreview} aria-label="Preview">
-        {video.url && <video src={`${video.url}#t=0.5`} muted playsInline preload="metadata" />}
+        {thumbUrl ? (
+          <img src={thumbUrl} alt="" loading="lazy" decoding="async" />
+        ) : (
+          <span className="vpending">
+            <span className="spinner" />
+          </span>
+        )}
         <span className="vplay">
           <svg viewBox="0 0 24 24" aria-hidden="true">
             <path fill="currentColor" d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
