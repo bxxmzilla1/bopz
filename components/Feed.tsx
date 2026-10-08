@@ -63,6 +63,7 @@ export default function Feed({ userId }: { userId: string }) {
   const sinceAd = useRef(0);
   const adCount = useRef(0);
   const lastAd = useRef<string | null>(null);
+  const openId = useRef<string | null>(null);
 
   function nextAd(): string | null {
     const ids = adIds.current;
@@ -117,6 +118,11 @@ export default function Feed({ userId }: { userId: string }) {
   const load = useCallback(async () => {
     if (loadingRef.current) return;
     loadingRef.current = true;
+    const fromUrl = new URLSearchParams(window.location.search).get("v");
+    if (fromUrl) {
+      openId.current = fromUrl;
+      window.history.replaceState(null, "", window.location.pathname);
+    }
     const supabase = getSupabase();
     try {
       const { data, error } = await supabase
@@ -174,7 +180,12 @@ export default function Feed({ userId }: { userId: string }) {
       adCount.current = 0;
 
       const unseen = regularIds.current.filter((id) => !seen.current.has(id));
-      const first = unseen.length ? unseen : shuffle(regularIds.current);
+      let first = unseen.length ? unseen : shuffle(regularIds.current);
+
+      // A tapped notification can name a video to open first.
+      const target = openId.current;
+      openId.current = null;
+      if (target && map[target]) first = [target, ...first.filter((id) => id !== target)];
 
       pass.current = 0;
       appendedAt.current = -1;
@@ -195,6 +206,19 @@ export default function Feed({ userId }: { userId: string }) {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // The service worker posts this when a notification is tapped while the app is already open.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === "open-video" && typeof e.data.id === "string") {
+        openId.current = e.data.id;
+        load();
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
   }, [load]);
 
   useEffect(() => {

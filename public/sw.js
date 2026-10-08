@@ -45,13 +45,17 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
+  const targetUrl = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin);
+  const target = targetUrl.href;
+  const videoId = targetUrl.searchParams.get("v");
 
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
       for (const client of windows) {
         if (new URL(client.url).origin === self.location.origin && "focus" in client) {
-          if ("navigate" in client && client.url !== target) client.navigate(target);
+          // An open feed jumps to the video itself; reloading the page would be slower.
+          if (videoId) client.postMessage({ type: "open-video", id: videoId });
+          else if ("navigate" in client && client.url !== target) client.navigate(target);
           return client.focus();
         }
       }

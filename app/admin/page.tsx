@@ -490,7 +490,7 @@ function Dashboard({ session }: { session: Session }) {
           </>
         )}
 
-        {section === "notify" && <SendNotification session={session} onSent={refreshLogs} />}
+        {section === "notify" && <SendNotification session={session} videos={regularVideos} onSent={refreshLogs} />}
 
         {section === "upload" && <UploadVideo onUploaded={refreshVideos} />}
 
@@ -832,9 +832,20 @@ function AllowedCountries() {
   );
 }
 
-function SendNotification({ session, onSent }: { session: Session; onSent: () => void }) {
+function SendNotification({
+  session,
+  videos,
+  onSent,
+}: {
+  session: Session;
+  videos: AdminVideo[];
+  onSent: () => void;
+}) {
   const [title, setTitle] = useState("");
-  const [url, setUrl] = useState("/");
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
+  const picked = videos.find((v) => v.id === videoId) ?? null;
+  const url = picked ? `/?v=${picked.id}` : "/";
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
 
@@ -872,10 +883,30 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
           Title
           <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
         </label>
-        <label className="field">
-          Open page when tapped
-          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/" />
-        </label>
+        <div className="field">
+          Video to open when tapped
+          <div className="pick-current">
+            {picked ? (
+              <>
+                <span className="pick-thumb">{picked.thumb_url && <img src={picked.thumb_url} alt="" />}</span>
+                <span className="grow">
+                  <b>{picked.title || "Untitled"}</b>
+                  <span className="muted">{new Date(picked.created_at).toLocaleDateString()}</span>
+                </span>
+              </>
+            ) : (
+              <span className="grow muted">None, opens the feed</span>
+            )}
+            <button type="button" className="btn" onClick={() => setPicking(true)}>
+              {picked ? "Change" : "Choose video"}
+            </button>
+            {picked && (
+              <button type="button" className="btn" onClick={() => setVideoId(null)}>
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
         <button className="btn accent" type="submit" disabled={busy || !title.trim()}>
           {busy ? "Sending…" : "Send to all"}
         </button>
@@ -899,6 +930,32 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
           </div>
         </div>
       </div>
+
+      {picking && (
+        <Modal onClose={() => setPicking(false)} wide>
+          <h2 style={{ margin: "0 0 12px", fontSize: 18 }}>Choose a video</h2>
+          {videos.length === 0 ? (
+            <p className="empty">No videos uploaded yet.</p>
+          ) : (
+            <div className="pick-grid">
+              {videos.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  className={`pick-item${v.id === videoId ? " on" : ""}`}
+                  onClick={() => {
+                    setVideoId(v.id);
+                    setPicking(false);
+                  }}
+                >
+                  {v.thumb_url ? <img src={v.thumb_url} alt="" loading="lazy" /> : <span className="pick-none">No preview</span>}
+                  <span className="pick-label">{v.title || new Date(v.created_at).toLocaleDateString()}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </Modal>
+      )}
     </div>
   );
 }
