@@ -1013,6 +1013,90 @@ function SendNotification({
   );
 }
 
+const formatSize = (bytes: number) =>
+  bytes >= 1024 * 1024 * 1024 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+
+function VideoDrop({
+  files,
+  onFiles,
+  multiple = false,
+}: {
+  files: File[];
+  onFiles: (files: File[]) => void;
+  multiple?: boolean;
+}) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  function accept(list: FileList | null) {
+    const videos = [...(list ?? [])].filter((f) => f.type.startsWith("video/") || /\.(mp4|mov|webm|m4v)$/i.test(f.name));
+    if (videos.length) onFiles(multiple ? videos : videos.slice(0, 1));
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        className={`drop${dragging ? " dragging" : ""}${files.length ? " filled" : ""}`}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          accept(e.dataTransfer.files);
+        }}
+      >
+        <span className="drop-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+          </svg>
+        </span>
+        <span className="drop-text">
+          <b>
+            {files.length
+              ? multiple
+                ? `${files.length} video${files.length > 1 ? "s" : ""} selected`
+                : "Video selected"
+              : multiple
+                ? "Choose videos"
+                : "Choose a video"}
+          </b>
+          <span>{files.length ? "Click to change" : "Click to browse or drag and drop · MP4, MOV, WebM"}</span>
+        </span>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        hidden
+        multiple={multiple}
+        accept="video/mp4,video/quicktime,video/webm,video/*"
+        onChange={(e) => accept(e.target.files)}
+      />
+      {files.length > 0 && (
+        <ul className="drop-files">
+          {files.map((f, i) => (
+            <li key={`${f.name}-${i}`}>
+              <span className="name">{f.name}</span>
+              <span className="size">{formatSize(f.size)}</span>
+              <button
+                type="button"
+                aria-label={`Remove ${f.name}`}
+                onClick={() => onFiles(files.filter((_, j) => j !== i))}
+              >
+                ×
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 /** Uploads the file, its first-frame thumbnail, and inserts the videos row. Throws on failure. */
 async function uploadVideoFile(
   file: File,
@@ -1101,16 +1185,10 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   return (
     <form className="panel" onSubmit={submit}>
       <p className="sub">Vertical MP4 (H.264) plays best on every phone.</p>
-      <label className="field">
+      <div className="field">
         Video file
-        <input
-          key={inputKey}
-          type="file"
-          accept="video/mp4,video/quicktime,video/webm,video/*"
-          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          required
-        />
-      </label>
+        <VideoDrop key={inputKey} files={file ? [file] : []} onFiles={(f) => setFile(f[0] ?? null)} />
+      </div>
       <label className="field">
         Button link (optional)
         <input
@@ -1274,17 +1352,10 @@ function AdsManager({ ads, onChanged }: { ads: AdminVideo[]; onChanged: () => vo
         <div className="panel-head">
           <h2>Upload ad videos</h2>
         </div>
-        <label className="field">
-          Video files (you can pick several)
-          <input
-            key={inputKey}
-            type="file"
-            multiple
-            accept="video/mp4,video/quicktime,video/webm,video/*"
-            onChange={(e) => setFiles([...(e.target.files ?? [])])}
-            required
-          />
-        </label>
+        <div className="field">
+          Video files
+          <VideoDrop key={inputKey} multiple files={files} onFiles={setFiles} />
+        </div>
         <HeartsField label="Starting hearts" value={hearts} onChange={setHearts} />
         <button className="btn accent" type="submit" disabled={uploading || !files.length}>
           {uploading ? "Uploading…" : files.length > 1 ? `Upload ${files.length} videos` : "Upload"}

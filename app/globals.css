@@ -993,6 +993,120 @@ button {
   width: min(520px, 100%);
 }
 
+/* Video drop zone */
+.drop {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 18px;
+  text-align: left;
+  color: #fff;
+  border: 1.5px dashed rgba(168, 85, 247, 0.4);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08), rgba(109, 40, 217, 0.04)), #0a0810;
+  transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+
+.drop:hover,
+.drop.dragging {
+  border-color: var(--accent);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.16), rgba(109, 40, 217, 0.08)), #0a0810;
+  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.12);
+}
+
+.drop.filled {
+  border-style: solid;
+  border-color: rgba(168, 85, 247, 0.55);
+}
+
+.drop-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 6px 20px rgba(168, 85, 247, 0.35);
+}
+
+.drop-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.drop-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.drop-text b {
+  font-size: 15px;
+}
+
+.drop-text span {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--soft, var(--muted));
+}
+
+.drop-files {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.drop-files li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 12px;
+  border: 1px solid var(--line, var(--border));
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 13px;
+  font-weight: 400;
+  color: #fff;
+}
+
+.drop-files .name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.drop-files .size {
+  color: var(--soft, var(--muted));
+  flex: none;
+}
+
+.drop-files button {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--soft, var(--muted));
+  font-size: 18px;
+  line-height: 1;
+}
+
+.drop-files button:hover {
+  background: rgba(255, 107, 138, 0.15);
+  color: #ff6b8a;
+}
+
 /* Slim themed scrollbars for the admin */
 .dash,
 .modal {
