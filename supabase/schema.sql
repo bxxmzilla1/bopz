@@ -103,6 +103,22 @@ create table if not exists public.notifications (
 );
 
 -- ---------------------------------------------------------------------------
+-- Link button clicks (written by the server with the service role key)
+-- ---------------------------------------------------------------------------
+create table if not exists public.link_clicks (
+  id bigint generated always as identity primary key,
+  video_id uuid references public.videos (id) on delete set null,
+  user_id uuid references auth.users (id) on delete set null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.link_clicks enable row level security;
+
+drop policy if exists "link clicks admin read" on public.link_clicks;
+create policy "link clicks admin read" on public.link_clicks
+  for select to authenticated using (public.is_admin());
+
+-- ---------------------------------------------------------------------------
 -- Row level security
 -- ---------------------------------------------------------------------------
 alter table public.admins enable row level security;

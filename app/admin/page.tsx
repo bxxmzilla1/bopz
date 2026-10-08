@@ -181,7 +181,7 @@ function Login() {
   );
 }
 
-type Section = "overview" | "notify" | "videos" | "history" | "devices";
+type Section = "overview" | "notify" | "upload" | "library" | "history";
 
 const SECTIONS: { id: Section; label: string; title: string; subtitle: string; icon: React.ReactNode }[] = [
   {
@@ -199,11 +199,18 @@ const SECTIONS: { id: Section; label: string; title: string; subtitle: string; i
     icon: <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16l-2-2zM10 20a2 2 0 0 0 4 0" />,
   },
   {
-    id: "videos",
-    label: "Video posts",
-    title: "Video posts",
-    subtitle: "Upload, edit, and remove videos in the feed.",
-    icon: <path d="M4 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm12 5 5-3v10l-5-3" />,
+    id: "upload",
+    label: "Upload video",
+    title: "Upload video",
+    subtitle: "New videos go straight to the top of the feed.",
+    icon: <path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />,
+  },
+  {
+    id: "library",
+    label: "All videos",
+    title: "All videos",
+    subtitle: "Preview, edit, or remove any video.",
+    icon: <path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z" />,
   },
   {
     id: "history",
@@ -212,14 +219,9 @@ const SECTIONS: { id: Section; label: string; title: string; subtitle: string; i
     subtitle: "Everything you've sent and how many phones got it.",
     icon: <path d="M12 7v5l3 2M21 12a9 9 0 1 1-3-6.7M21 4v5h-5" />,
   },
-  {
-    id: "devices",
-    label: "Push devices",
-    title: "Push devices",
-    subtitle: "Phones that installed Bopz and allowed notifications.",
-    icon: <path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm3 17h2" />,
-  },
 ];
+
+type ResetTarget = "devices" | "history" | "clicks";
 
 function NavIcon({ children }: { children: React.ReactNode }) {
   return (
@@ -243,7 +245,8 @@ function Dashboard({ session }: { session: Session }) {
   const [logs, setLogs] = useState<NotificationLog[]>([]);
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
   const [activeCount, setActiveCount] = useState<number | null>(null);
-  const [resetting, setResetting] = useState<"devices" | "history" | null>(null);
+  const [clickCount, setClickCount] = useState<number | null>(null);
+  const [resetting, setResetting] = useState<ResetTarget[]>([]);
 
   useEffect(() => {
     const fromHash = window.location.hash.slice(1) as Section;
@@ -256,27 +259,29 @@ function Dashboard({ session }: { session: Session }) {
     window.scrollTo({ top: 0 });
   }
 
-  const refreshDevices = useCallback(async () => {
+  const refreshCounts = useCallback(async () => {
     const supabase = getSupabase();
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const [all, active] = await Promise.all([
+    const [all, active, clicks] = await Promise.all([
       supabase.from("push_subscriptions").select("id", { count: "exact", head: true }),
       supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).gte("updated_at", weekAgo),
+      supabase.from("link_clicks").select("id", { count: "exact", head: true }),
     ]);
     if (all.count !== null) setSubscriberCount(all.count);
     if (active.count !== null) setActiveCount(active.count);
+    if (clicks.count !== null) setClickCount(clicks.count);
   }, []);
 
   useEffect(() => {
     const id = window.setInterval(() => {
-      if (document.visibilityState === "visible") refreshDevices();
+      if (document.visibilityState === "visible") refreshCounts();
     }, 10_000);
-    window.addEventListener("focus", refreshDevices);
+    window.addEventListener("focus", refreshCounts);
     return () => {
       window.clearInterval(id);
-      window.removeEventListener("focus", refreshDevices);
+      window.removeEventListener("focus", refreshCounts);
     };
-  }, [refreshDevices]);
+  }, [refreshCounts]);
 
   const refreshLogs = useCallback(async () => {
     const { data } = await getSupabase()
@@ -287,75 +292,59 @@ function Dashboard({ session }: { session: Session }) {
     setLogs((data ?? []) as NotificationLog[]);
   }, []);
 
-  const refresh = useCallback(async () => {
+  const refreshVideos = useCallback(async () => {
     const supabase = getSupabase();
-    const [vids] = await Promise.all([
-      supabase
-        .from("videos")
-        .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
-        .order("created_at", { ascending: false })
-        .limit(200),
-      refreshLogs(),
-      refreshDevices(),
-    ]);
-
-    const rows = (vids.data ?? []) as AdminVideo[];
-    if (rows.length) {
+    const { data } = await supabase
+      .from("videos")
+      .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
+      .order("created_at", { ascending: false })
+      .limit(1000);
+    const rows = (data ?? []) as AdminVideo[];
+    for (let i = 0; i < rows.length; i += 100) {
+      const chunk = rows.slice(i, i + 100);
       const { data: signed } = await supabase.storage.from(VIDEO_BUCKET).createSignedUrls(
-        rows.map((r) => r.storage_path),
-        60 * 60
+        chunk.map((r) => r.storage_path),
+        60 * 60 * 2
       );
-      rows.forEach((r, i) => (r.url = signed?.[i]?.signedUrl ?? undefined));
+      chunk.forEach((r, j) => (r.url = signed?.[j]?.signedUrl ?? undefined));
     }
     setVideos(rows);
-  }, [refreshDevices, refreshLogs]);
+  }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    refreshVideos();
+    refreshLogs();
+    refreshCounts();
+  }, [refreshVideos, refreshLogs, refreshCounts]);
 
-  async function adminPost(path: string) {
-    const { data } = await getSupabase().auth.getSession();
-    const res = await fetch(path, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${data.session?.access_token ?? session.access_token}` },
-    });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error ?? "Request failed");
-    return json;
-  }
-
-  async function resetDevices() {
-    setResetting("devices");
+  async function reset(targets: ResetTarget[]) {
+    setResetting(targets);
     try {
-      await adminPost("/api/admin/reset-devices");
-      await refreshDevices();
+      const { data } = await getSupabase().auth.getSession();
+      const res = await fetch("/api/admin/reset", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.session?.access_token ?? session.access_token}`,
+        },
+        body: JSON.stringify({ targets }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Reset failed");
+      await Promise.all([refreshCounts(), refreshLogs()]);
     } catch (err) {
       alert((err as Error).message);
     } finally {
-      setResetting(null);
+      setResetting([]);
     }
   }
 
-  async function resetHistory() {
-    setResetting("history");
-    try {
-      await adminPost("/api/admin/reset-history");
-      await refreshLogs();
-    } catch (err) {
-      alert((err as Error).message);
-    } finally {
-      setResetting(null);
-    }
-  }
-
-  const totalLikes = videos.reduce((sum, v) => sum + v.likes_count, 0);
   const current = SECTIONS.find((s) => s.id === section)!;
   const badges: Partial<Record<Section, number | null>> = {
-    videos: videos.length,
+    library: videos.length,
     history: logs.length,
-    devices: subscriberCount,
   };
+  const isResetting = (t: ResetTarget) => resetting.includes(t);
 
   return (
     <div className="dash">
@@ -391,21 +380,44 @@ function Dashboard({ session }: { session: Session }) {
 
       <main className="dash-main">
         <header className="page-head">
-          <h1>{current.title}</h1>
-          <p>{current.subtitle}</p>
+          <div>
+            <h1>{current.title}</h1>
+            <p>{current.subtitle}</p>
+          </div>
+          {section === "overview" && (
+            <button
+              className="btn danger"
+              onClick={() => reset(["devices", "history", "clicks"])}
+              disabled={resetting.length > 0}
+            >
+              {resetting.length === 3 ? "Resetting…" : "Reset all"}
+            </button>
+          )}
         </header>
 
         {section === "overview" && (
           <>
             <div className="stat-grid">
               <StatCard label="Videos" value={videos.length} />
-              <StatCard label="Hearts" value={formatCount(totalLikes)} />
               <StatCard
                 label="Push devices"
                 value={subscriberCount ?? "–"}
                 hint={activeCount !== null ? `${activeCount} opened the app this week` : undefined}
+                onReset={() => reset(["devices"])}
+                resetting={isResetting("devices")}
               />
-              <StatCard label="Notifications sent" value={logs.length} />
+              <StatCard
+                label="Notifications sent"
+                value={logs.length}
+                onReset={() => reset(["history"])}
+                resetting={isResetting("history")}
+              />
+              <StatCard
+                label="Link Clicks"
+                value={clickCount ?? "–"}
+                onReset={() => reset(["clicks"])}
+                resetting={isResetting("clicks")}
+              />
             </div>
 
             <div className="quick-grid">
@@ -413,7 +425,7 @@ function Dashboard({ session }: { session: Session }) {
                 <b>Send a notification</b>
                 <span>Reach every phone with Bopz installed.</span>
               </button>
-              <button className="quick" onClick={() => go("videos")}>
+              <button className="quick" onClick={() => go("upload")}>
                 <b>Upload a video</b>
                 <span>It goes straight to the top of the feed.</span>
               </button>
@@ -423,26 +435,9 @@ function Dashboard({ session }: { session: Session }) {
 
         {section === "notify" && <SendNotification session={session} onSent={refreshLogs} />}
 
-        {section === "videos" && (
-          <>
-            <UploadVideo onUploaded={refresh} />
-            <section className="panel">
-              <div className="panel-head">
-                <h2>Library</h2>
-                <span className="muted">{videos.length} videos</span>
-              </div>
-              {videos.length === 0 ? (
-                <p className="empty">No videos uploaded yet.</p>
-              ) : (
-                <ul className="list">
-                  {videos.map((v) => (
-                    <VideoRow key={v.id} video={v} onChanged={refresh} />
-                  ))}
-                </ul>
-              )}
-            </section>
-          </>
-        )}
+        {section === "upload" && <UploadVideo onUploaded={refreshVideos} />}
+
+        {section === "library" && <VideoLibrary videos={videos} onChanged={refreshVideos} />}
 
         {section === "history" && (
           <section className="panel">
@@ -450,10 +445,10 @@ function Dashboard({ session }: { session: Session }) {
               <h2>{logs.length} sent</h2>
               <button
                 className="btn danger"
-                onClick={resetHistory}
-                disabled={resetting === "history" || logs.length === 0}
+                onClick={() => reset(["history"])}
+                disabled={isResetting("history") || logs.length === 0}
               >
-                {resetting === "history" ? "Resetting…" : "Reset history"}
+                {isResetting("history") ? "Resetting…" : "Reset history"}
               </button>
             </div>
             {logs.length === 0 ? (
@@ -475,37 +470,34 @@ function Dashboard({ session }: { session: Session }) {
             )}
           </section>
         )}
-
-        {section === "devices" && (
-          <>
-            <div className="stat-grid">
-              <StatCard label="Push devices" value={subscriberCount ?? "–"} hint="Updates every 10 seconds" />
-              <StatCard label="Opened the app this week" value={activeCount ?? "–"} />
-            </div>
-            <section className="panel">
-              <div className="panel-head">
-                <h2>Reset count</h2>
-                <button className="btn danger" onClick={resetDevices} disabled={resetting === "devices"}>
-                  {resetting === "devices" ? "Resetting…" : "Reset to 0"}
-                </button>
-              </div>
-              <p className="sub" style={{ margin: 0 }}>
-                Starts the count from zero. Each phone is added back the moment its owner opens Bopz from the home
-                screen, so phones that deleted the app never come back. Until a phone is added back, it won&apos;t
-                receive notifications.
-              </p>
-            </section>
-          </>
-        )}
       </main>
     </div>
   );
 }
 
-function StatCard({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+function StatCard({
+  label,
+  value,
+  hint,
+  onReset,
+  resetting,
+}: {
+  label: string;
+  value: React.ReactNode;
+  hint?: string;
+  onReset?: () => void;
+  resetting?: boolean;
+}) {
   return (
     <div className="stat-card">
-      <div className="label">{label}</div>
+      <div className="stat-top">
+        <div className="label">{label}</div>
+        {onReset && (
+          <button className="stat-reset" onClick={onReset} disabled={resetting}>
+            {resetting ? "Resetting…" : "Reset"}
+          </button>
+        )}
+      </div>
       <div className="value">{value}</div>
       {hint && <div className="hint">{hint}</div>}
     </div>
@@ -664,7 +656,6 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
 
   return (
     <form className="panel" onSubmit={submit}>
-      <h2>Upload video</h2>
       <p className="sub">Vertical MP4 (H.264) plays best on every phone.</p>
       <label className="field">
         Video file
@@ -712,9 +703,90 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   );
 }
 
-function VideoRow({ video, onChanged }: { video: AdminVideo; onChanged: () => void }) {
+const PER_PAGE = 16;
+
+function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: () => void }) {
+  const [page, setPage] = useState(0);
+  const [previewing, setPreviewing] = useState<AdminVideo | null>(null);
+  const [editing, setEditing] = useState<AdminVideo | null>(null);
+
+  const pages = Math.max(1, Math.ceil(videos.length / PER_PAGE));
+  const current = Math.min(page, pages - 1);
+  const shown = videos.slice(current * PER_PAGE, current * PER_PAGE + PER_PAGE);
+
+  if (videos.length === 0) {
+    return (
+      <section className="panel">
+        <p className="empty">No videos uploaded yet.</p>
+      </section>
+    );
+  }
+
+  return (
+    <>
+      <div className="vgrid">
+        {shown.map((v) => (
+          <VideoTile
+            key={v.id}
+            video={v}
+            onPreview={() => setPreviewing(v)}
+            onEdit={() => setEditing(v)}
+            onDeleted={onChanged}
+          />
+        ))}
+      </div>
+
+      {pages > 1 && (
+        <div className="pager">
+          <button className="btn" onClick={() => setPage(current - 1)} disabled={current === 0}>
+            Previous
+          </button>
+          {Array.from({ length: pages }, (_, i) => (
+            <button key={i} className={`btn page${i === current ? " on" : ""}`} onClick={() => setPage(i)}>
+              {i + 1}
+            </button>
+          ))}
+          <button className="btn" onClick={() => setPage(current + 1)} disabled={current >= pages - 1}>
+            Next
+          </button>
+        </div>
+      )}
+
+      {previewing && (
+        <Modal onClose={() => setPreviewing(null)}>
+          <video className="preview-video" src={previewing.url} controls autoPlay playsInline />
+          <div className="modal-caption">{previewing.title || "Untitled"}</div>
+        </Modal>
+      )}
+
+      {editing && (
+        <Modal onClose={() => setEditing(null)} wide>
+          <h2 style={{ margin: "0 0 12px", fontSize: 18 }}>Edit video</h2>
+          <EditVideo
+            video={editing}
+            onSaved={() => {
+              setEditing(null);
+              onChanged();
+            }}
+          />
+        </Modal>
+      )}
+    </>
+  );
+}
+
+function VideoTile({
+  video,
+  onPreview,
+  onEdit,
+  onDeleted,
+}: {
+  video: AdminVideo;
+  onPreview: () => void;
+  onEdit: () => void;
+  onDeleted: () => void;
+}) {
   const [busy, setBusy] = useState(false);
-  const [editing, setEditing] = useState(false);
 
   async function remove() {
     setBusy(true);
@@ -726,48 +798,60 @@ function VideoRow({ video, onChanged }: { video: AdminVideo; onChanged: () => vo
       return;
     }
     await supabase.storage.from(VIDEO_BUCKET).remove([video.storage_path]);
-    onChanged();
+    onDeleted();
   }
 
   return (
-    <li style={{ flexWrap: "wrap" }}>
-      {video.url ? (
-        <video className="thumb" src={`${video.url}#t=0.5`} muted playsInline preload="metadata" />
-      ) : (
-        <div className="thumb" />
-      )}
-      <div className="grow">
-        <div className="title">{video.title || "Untitled"}</div>
-        <div className="meta">
-          {formatCount(video.likes_count)} hearts · {new Date(video.created_at).toLocaleDateString()}
-        </div>
+    <div className="vtile">
+      <button className="vthumb" onClick={onPreview} aria-label="Preview">
+        {video.url && <video src={`${video.url}#t=0.5`} muted playsInline preload="metadata" />}
+        <span className="vplay">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M8 5.14v13.72a1 1 0 0 0 1.5.86l11-6.86a1 1 0 0 0 0-1.72l-11-6.86A1 1 0 0 0 8 5.14z" />
+          </svg>
+        </span>
+        <span className="vhearts">♥ {formatCount(video.likes_count)}</span>
+      </button>
+      <div className="vbody">
+        <div className="vtitle">{video.title || "Untitled"}</div>
+        <div className="vmeta">{new Date(video.created_at).toLocaleDateString()}</div>
         {video.link_url && (
-          <div className="meta">
-            Button: “{video.link_label}” →{" "}
-            <a href={video.link_url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>
-              {video.link_url}
-            </a>
+          <div className="vmeta" title={video.link_url}>
+            Button: {video.link_label}
           </div>
         )}
       </div>
-      <div style={{ display: "flex", gap: 8 }}>
-        <button className="btn" onClick={() => setEditing((v) => !v)} disabled={busy}>
-          {editing ? "Close" : "Edit"}
+      <div className="vactions">
+        <button className="btn" onClick={onPreview}>
+          Preview
+        </button>
+        <button className="btn" onClick={onEdit}>
+          Edit
         </button>
         <button className="btn danger" onClick={remove} disabled={busy}>
           {busy ? "…" : "Delete"}
         </button>
       </div>
-      {editing && (
-        <EditVideo
-          video={video}
-          onSaved={() => {
-            setEditing(false);
-            onChanged();
-          }}
-        />
-      )}
-    </li>
+    </div>
+  );
+}
+
+function Modal({ children, onClose, wide }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className={`modal${wide ? " wide" : ""}`} onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close" onClick={onClose} aria-label="Close">
+          ×
+        </button>
+        {children}
+      </div>
+    </div>
   );
 }
 

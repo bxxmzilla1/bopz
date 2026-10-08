@@ -55,6 +55,25 @@ export default function Feed({ userId }: { userId: string }) {
   const pass = useRef(0);
   const appendedAt = useRef(-1);
   const loadingRef = useRef(false);
+  const tokenRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const supabase = getSupabase();
+    supabase.auth.getSession().then(({ data }) => (tokenRef.current = data.session?.access_token ?? null));
+    const { data: listener } = supabase.auth.onAuthStateChange((_e, session) => {
+      tokenRef.current = session?.access_token ?? null;
+    });
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // sendBeacon survives the app switching to the browser right after the tap.
+  function trackLinkClick(videoId: string) {
+    const token = tokenRef.current;
+    if (!token) return;
+    const payload = JSON.stringify({ video_id: videoId, token });
+    const sent = navigator.sendBeacon?.("/api/track-click", new Blob([payload], { type: "text/plain" }));
+    if (!sent) fetch("/api/track-click", { method: "POST", body: payload, keepalive: true }).catch(() => {});
+  }
 
   const load = useCallback(async () => {
     if (loadingRef.current) return;
@@ -243,6 +262,7 @@ export default function Feed({ userId }: { userId: string }) {
                 onMutedChange={setMuted}
                 onToggleLike={() => setLike(video.id, !liked.has(video.id))}
                 onLike={() => setLike(video.id, true)}
+                onLinkClick={() => trackLinkClick(video.id)}
               />
             );
           })

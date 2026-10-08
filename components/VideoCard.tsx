@@ -26,13 +26,25 @@ type Props = {
   onMutedChange: (muted: boolean) => void;
   onToggleLike: () => void;
   onLike: () => void;
+  onLinkClick: () => void;
 };
 
 type Burst = { key: number; x: number; y: number };
 
 const DOUBLE_TAP_MS = 260;
 
-export default function VideoCard({ video, index, active, near, muted, liked, onMutedChange, onToggleLike, onLike }: Props) {
+export default function VideoCard({
+  video,
+  index,
+  active,
+  near,
+  muted,
+  liked,
+  onMutedChange,
+  onToggleLike,
+  onLike,
+  onLinkClick,
+}: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const tapTimer = useRef<number | null>(null);
   const [paused, setPaused] = useState(false);
@@ -143,6 +155,7 @@ export default function VideoCard({ video, index, active, near, muted, liked, on
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => {
+              onLinkClick();
               const href = externalHref(video.link_url!);
               if (href !== video.link_url) {
                 e.preventDefault();
