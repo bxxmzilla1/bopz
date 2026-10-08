@@ -280,13 +280,23 @@ function Dashboard({ session }: { session: Session }) {
   const refreshCounts = useCallback(async () => {
     const supabase = getSupabase();
     const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const [all, active, clicks] = await Promise.all([
-      supabase.from("push_subscriptions").select("id", { count: "exact", head: true }),
-      supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).gte("updated_at", weekAgo),
+    const [devices, clicks] = await Promise.all([
+      supabase.from("push_subscriptions").select("id,ip,updated_at").limit(10000),
       supabase.from("link_clicks").select("id", { count: "exact", head: true }),
     ]);
-    if (all.count !== null) setSubscriberCount(all.count);
-    if (active.count !== null) setActiveCount(active.count);
+    if (devices.data) {
+      const rows = devices.data as { id: string; ip: string | null; updated_at: string }[];
+      setSubscriberCount(uniqueByIp(rows).length);
+      setActiveCount(uniqueByIp(rows.filter((r) => r.updated_at >= weekAgo)).length);
+    } else {
+      // The ip column may not exist yet; fall back to raw counts.
+      const [all, active] = await Promise.all([
+        supabase.from("push_subscriptions").select("id", { count: "exact", head: true }),
+        supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).gte("updated_at", weekAgo),
+      ]);
+      if (all.count !== null) setSubscriberCount(all.count);
+      if (active.count !== null) setActiveCount(active.count);
+    }
     if (clicks.count !== null) setClickCount(clicks.count);
   }, []);
 
@@ -564,6 +574,17 @@ function timeAgo(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`;
 }
 
+/** Devices sharing an IP count once; the first row (most recent when sorted) wins. Rows without an IP stay separate. */
+function uniqueByIp<T extends { id: string; ip: string | null }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  return rows.filter((r) => {
+    const key = r.ip ? `ip:${r.ip}` : `id:${r.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function DeviceLocations() {
   const [rows, setRows] = useState<DeviceRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -584,7 +605,7 @@ function DeviceLocations() {
       return;
     }
     setError(null);
-    setRows((data ?? []) as DeviceRow[]);
+    setRows(uniqueByIp((data ?? []) as DeviceRow[]));
   }, []);
 
   useEffect(() => {
