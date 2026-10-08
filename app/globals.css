@@ -1,6 +1,7 @@
 :root {
-  --accent: #ff2d6f;
-  --accent-2: #7b2ff7;
+  --accent: #a855f7;
+  --heart: #ff2d55;
+  --accent-2: #6d28d9;
   --bg: #000;
   --fg: #fff;
   --muted: rgba(255, 255, 255, 0.65);
@@ -48,8 +49,8 @@ button {
   justify-content: center;
   padding: calc(24px + var(--safe-top)) 24px calc(24px + var(--safe-bottom));
   text-align: center;
-  background: radial-gradient(120% 80% at 50% 0%, rgba(123, 47, 247, 0.35), transparent 60%),
-    radial-gradient(120% 80% at 50% 100%, rgba(255, 45, 111, 0.3), transparent 60%), #000;
+  background: radial-gradient(120% 80% at 50% 0%, rgba(109, 40, 217, 0.35), transparent 60%),
+    radial-gradient(120% 80% at 50% 100%, rgba(168, 85, 247, 0.3), transparent 60%), #000;
 }
 
 .logo {
@@ -57,7 +58,7 @@ button {
   height: 88px;
   border-radius: 22px;
   margin-bottom: 20px;
-  box-shadow: 0 10px 40px rgba(255, 45, 111, 0.35);
+  box-shadow: 0 10px 40px rgba(168, 85, 247, 0.35);
 }
 
 .screen h1 {
@@ -82,7 +83,7 @@ button {
   font-size: 17px;
   color: #fff;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 8px 30px rgba(255, 45, 111, 0.35);
+  box-shadow: 0 8px 30px rgba(168, 85, 247, 0.35);
   transition: transform 0.15s ease, opacity 0.15s ease;
 }
 
@@ -310,7 +311,7 @@ button {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  border: 2px solid rgba(255, 45, 111, 0.8);
+  border: 2px solid rgba(168, 85, 247, 0.8);
   animation: cta-ring 1.6s ease-out infinite;
   pointer-events: none;
 }
@@ -324,11 +325,11 @@ button {
   0%,
   100% {
     transform: scale(1);
-    box-shadow: 0 0 14px rgba(255, 45, 111, 0.55), 0 0 32px rgba(123, 47, 247, 0.35);
+    box-shadow: 0 0 14px rgba(168, 85, 247, 0.55), 0 0 32px rgba(109, 40, 217, 0.35);
   }
   50% {
     transform: scale(1.07);
-    box-shadow: 0 0 26px rgba(255, 45, 111, 0.95), 0 0 60px rgba(123, 47, 247, 0.65);
+    box-shadow: 0 0 26px rgba(168, 85, 247, 0.95), 0 0 60px rgba(109, 40, 217, 0.65);
   }
 }
 
@@ -391,7 +392,7 @@ button {
 }
 
 .heart-on {
-  color: var(--accent);
+  color: var(--heart);
   animation: pop 0.35s ease;
 }
 
@@ -423,7 +424,7 @@ button {
   width: 110px;
   height: 110px;
   margin: -55px 0 0 -55px;
-  color: var(--accent);
+  color: var(--heart);
   pointer-events: none;
   animation: burst 0.8s ease-out forwards;
   filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4));
@@ -459,10 +460,9 @@ button {
 }
 
 .topbar .brand {
-  font-weight: 800;
-  font-size: 18px;
-  letter-spacing: -0.01em;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  display: block;
+  height: 30px;
+  width: auto;
 }
 
 .feed-empty {
@@ -480,12 +480,12 @@ button {
 /* ---------- Admin ---------- */
 
 .dash {
-  --panel: #111114;
-  --line: rgba(255, 255, 255, 0.08);
-  --soft: rgba(255, 255, 255, 0.55);
+  --panel: #110e18;
+  --line: rgba(196, 160, 255, 0.1);
+  --soft: rgba(236, 228, 255, 0.58);
   display: flex;
   min-height: 100vh;
-  background: #08080a;
+  background: radial-gradient(900px 500px at 100% 0%, rgba(109, 40, 217, 0.12), transparent 70%), #07060b;
 }
 
 /* Sidebar */
@@ -499,7 +499,7 @@ button {
   display: flex;
   flex-direction: column;
   padding: 22px 14px 18px;
-  background: #0b0b0e;
+  background: #0a0810;
   border-right: 1px solid var(--line);
 }
 
@@ -513,10 +513,14 @@ button {
   letter-spacing: -0.01em;
 }
 
-.side-brand img {
-  width: 30px;
-  height: 30px;
-  border-radius: 9px;
+/* The wordmark PNG has a black background; screen blending drops it on any backdrop. */
+.wordmark {
+  mix-blend-mode: screen;
+}
+
+.side-brand img.wordmark {
+  height: 38px;
+  width: auto;
 }
 
 .side-brand small {
@@ -563,8 +567,9 @@ button {
 }
 
 .nav-item.active {
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(168, 85, 247, 0.14);
   color: #fff;
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .nav-item.active svg {
@@ -1175,12 +1180,12 @@ button {
   padding: 18px 20px;
   border-radius: 16px;
   border: 1px solid var(--line);
-  background: linear-gradient(135deg, rgba(255, 45, 111, 0.12), rgba(123, 47, 247, 0.1)), var(--panel);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.12), rgba(109, 40, 217, 0.1)), var(--panel);
   transition: border-color 0.15s ease, transform 0.15s ease;
 }
 
 .quick:hover {
-  border-color: rgba(255, 45, 111, 0.5);
+  border-color: rgba(168, 85, 247, 0.5);
   transform: translateY(-1px);
 }
 
@@ -1260,8 +1265,8 @@ button {
 
 .field input:focus,
 .field textarea:focus {
-  border-color: rgba(255, 45, 111, 0.7);
-  box-shadow: 0 0 0 3px rgba(255, 45, 111, 0.15);
+  border-color: rgba(168, 85, 247, 0.7);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.15);
 }
 
 .field input[type="file"] {
@@ -1415,8 +1420,8 @@ button {
 .preview-screen {
   border-radius: 20px;
   padding: 28px 14px 90px;
-  background: radial-gradient(120% 90% at 20% 0%, rgba(123, 47, 247, 0.45), transparent 60%),
-    radial-gradient(120% 90% at 100% 100%, rgba(255, 45, 111, 0.35), transparent 60%), #0d0d12;
+  background: radial-gradient(120% 90% at 20% 0%, rgba(109, 40, 217, 0.45), transparent 60%),
+    radial-gradient(120% 90% at 100% 100%, rgba(168, 85, 247, 0.35), transparent 60%), #0d0d12;
 }
 
 .preview-note {
@@ -1503,6 +1508,10 @@ button {
 
   .side-brand {
     padding: 0 6px 0 2px;
+  }
+
+  .side-brand img.wordmark {
+    height: 28px;
   }
 
   .side-brand span,

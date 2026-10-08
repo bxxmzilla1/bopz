@@ -168,6 +168,7 @@ function Login() {
   return (
     <main className="screen">
       <form className="login" onSubmit={submit}>
+        <img className="wordmark" src="/icons/wordmark" alt="Bopz" style={{ height: 56, margin: "0 auto 8px", display: "block" }} />
         <h1>Admin</h1>
         <p className="lead" style={{ margin: "0 auto 24px" }}>
           Sign in to manage videos and notifications.
@@ -407,8 +408,7 @@ function Dashboard({ session }: { session: Session }) {
     <div className="dash">
       <aside className="side">
         <div className="side-brand">
-          <img src="/icons/96" alt="" />
-          <span>Bopz</span>
+          <img className="wordmark" src="/icons/wordmark" alt="Bopz" />
           <small>Admin</small>
         </div>
         <nav>

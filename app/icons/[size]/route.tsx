@@ -1,37 +1,60 @@
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { ImageResponse } from "next/og";
 
-const SIZES = [96, 180, 192, 512];
+// Square app icons, a padded maskable icon for Android, and a cropped wordmark for headers.
+const VARIANTS = ["96", "180", "192", "512", "512-maskable", "wordmark"] as const;
+type Variant = (typeof VARIANTS)[number];
+
+// The wordmark's bounding box inside the 1024×1024 logo.
+const LOGO = 1024;
+const MARK = { x: 60, y: 300, w: 920, h: 420 };
 
 export const dynamic = "force-static";
 export const dynamicParams = false;
 
 export function generateStaticParams() {
-  return SIZES.map((size) => ({ size: String(size) }));
+  return VARIANTS.map((size) => ({ size }));
 }
 
 export async function GET(_req: Request, { params }: { params: Promise<{ size: string }> }) {
   const { size: raw } = await params;
-  const size = SIZES.includes(Number(raw)) ? Number(raw) : 192;
-  const heart = Math.round(size * 0.5);
+  const variant: Variant = (VARIANTS as readonly string[]).includes(raw) ? (raw as Variant) : "192";
+  const logo = await readFile(join(process.cwd(), "app/icons/logo.png"));
+  const src = `data:image/png;base64,${logo.toString("base64")}`;
 
+  if (variant === "wordmark") {
+    const width = 360;
+    const scale = width / MARK.w;
+    const height = Math.round(MARK.h * scale);
+    return new ImageResponse(
+      (
+        <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", overflow: "hidden" }}>
+          <img
+            src={src}
+            width={LOGO * scale}
+            height={LOGO * scale}
+            style={{ position: "absolute", left: -MARK.x * scale, top: -MARK.y * scale }}
+          />
+        </div>
+      ),
+      { width, height }
+    );
+  }
+
+  const size = variant === "512-maskable" ? 512 : Number(variant);
+  // Zoom in so the wordmark fills the icon; the maskable icon keeps Android's safe zone instead.
+  const zoom = variant === "512-maskable" ? 0.82 : 1.1;
+  const drawn = size * zoom;
   return new ImageResponse(
     (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "linear-gradient(135deg, #ff2d6f 0%, #7b2ff7 100%)",
-        }}
-      >
-        <svg width={heart} height={heart} viewBox="0 0 24 24">
-          <path
-            fill="#ffffff"
-            d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
-          />
-        </svg>
+      <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", background: "#000" }}>
+        <img
+          src={src}
+          width={drawn}
+          height={drawn}
+          style={{ position: "absolute", left: (size - drawn) / 2, top: (size - drawn) / 2 }}
+        />
       </div>
     ),
     { width: size, height: size }

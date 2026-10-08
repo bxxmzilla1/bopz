@@ -323,7 +323,7 @@ export default function Feed({ userId }: { userId: string }) {
   return (
     <>
       <div className="topbar">
-        <span className="brand">Bopz</span>
+        <img className="brand wordmark" src="/icons/wordmark" alt="Bopz" />
       </div>
 
       <div className="feed" ref={containerRef}>
