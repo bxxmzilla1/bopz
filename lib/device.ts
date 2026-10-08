@@ -19,6 +19,24 @@ export function getPlatform(): Platform {
   return "desktop";
 }
 
+function iosMajorVersion(): number | null {
+  const match = navigator.userAgent.match(/OS (\d+)_\d+/);
+  if (match && /iPhone|iPad|iPod/.test(navigator.userAgent)) return Number(match[1]);
+  return null;
+}
+
+/**
+ * Builds a link that opens in the real Safari app instead of the in-app browser panel
+ * iOS home-screen apps use. The x-safari-https scheme requires iOS 17+.
+ */
+export function externalHref(url: string): string {
+  if (typeof window === "undefined" || getPlatform() !== "ios" || !isStandalone()) return url;
+  const version = iosMajorVersion();
+  // iPads report a desktop user agent without an iOS version; those are on iPadOS 13+.
+  if (version !== null && version < 17) return url;
+  return url.replace(/^https?:\/\//i, (scheme) => `x-safari-${scheme.toLowerCase()}`);
+}
+
 export function formatCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace(/\.0$/, "")}M`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(n >= 10_000 ? 0 : 1).replace(/\.0$/, "")}K`;

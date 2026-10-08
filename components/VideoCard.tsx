@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type MouseEvent } from "react";
-import { formatCount } from "@/lib/device";
+import { externalHref, formatCount } from "@/lib/device";
 import { HeartIcon, PlayIcon, SoundOffIcon, SoundOnIcon } from "./Icons";
 
 export type FeedVideo = {
@@ -137,7 +137,19 @@ export default function VideoCard({ video, index, active, near, muted, liked, on
 
       {video.link_url && (
         <div className="cta-wrap">
-          <a className="cta" href={video.link_url} target="_blank" rel="noopener noreferrer">
+          <a
+            className="cta"
+            href={video.link_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              const href = externalHref(video.link_url!);
+              if (href !== video.link_url) {
+                e.preventDefault();
+                window.location.href = href;
+              }
+            }}
+          >
             {video.link_label || "Open"}
           </a>
         </div>
