@@ -873,8 +873,6 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
 
 function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = useState<File | null>(null);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
   const [hearts, setHearts] = useState("0");
@@ -920,8 +918,6 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
 
       const row: Record<string, string | number | null> = {
         storage_path: path,
-        title: title.trim() || null,
-        description: description.trim() || null,
         link_url: button.link_url,
         link_label: button.link_label,
         likes_count: likesCount,
@@ -939,8 +935,6 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
 
       setStatus({ kind: "ok", text: "Uploaded! It's now at the top of the feed." });
       setFile(null);
-      setTitle("");
-      setDescription("");
       setLinkUrl("");
       setLinkLabel("");
       setHearts("0");
@@ -965,14 +959,6 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           required
         />
-      </label>
-      <label className="field">
-        Title (optional)
-        <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
-      </label>
-      <label className="field">
-        Description (optional)
-        <textarea value={description} maxLength={1000} onChange={(e) => setDescription(e.target.value)} />
       </label>
       <label className="field">
         Button link (optional)
