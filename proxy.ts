@@ -28,7 +28,12 @@ const BLOCKED_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"
 <div><img src="/icons/192" alt="" width="80" height="80" style="border-radius:20px;margin-bottom:20px"><h1 style="font-size:24px;margin:0 0 8px">Not available in your country</h1>
 <p style="color:rgba(255,255,255,.65);max-width:320px;line-height:1.5;margin:0 auto">Bopz isn't available where you are right now.</p></div></body></html>`;
 
+const ALWAYS_OPEN = /^\/(admin|api\/admin|manifest\.webmanifest|sw\.js)(\/|$)/;
+
 export async function proxy(req: NextRequest) {
+  // The admin dashboard must stay reachable from anywhere in the world.
+  if (ALWAYS_OPEN.test(req.nextUrl.pathname)) return NextResponse.next();
+
   // Vercel sets this header from the visitor's IP. It's absent in local development.
   const country = req.headers.get("x-vercel-ip-country")?.toUpperCase();
   if (!country) return NextResponse.next();
@@ -47,5 +52,5 @@ export async function proxy(req: NextRequest) {
 
 export const config = {
   // The admin dashboard, its APIs, and static assets are never blocked.
-  matcher: ["/((?!admin|api/admin|_next/static|_next/image|icons|favicon.ico).*)"],
+  matcher: ["/((?!admin|api/admin|manifest\\.webmanifest|sw\\.js|_next/static|_next/image|icons|favicon.ico).*)"],
 };
