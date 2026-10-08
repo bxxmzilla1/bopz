@@ -289,7 +289,11 @@ function Dashboard({ session }: { session: Session }) {
     if (SECTIONS.some((s) => s.id === fromHash)) setSection(fromHash);
   }, []);
 
+  const [menuOpen, setMenuOpen] = useState(false);
+  const swipeStart = useRef<number | null>(null);
+
   function go(next: Section) {
+    setMenuOpen(false);
     setSection(next);
     window.history.replaceState(null, "", `#${next}`);
     window.scrollTo({ top: 0 });
@@ -410,7 +414,25 @@ function Dashboard({ session }: { session: Session }) {
 
   return (
     <div className="dash">
-      <aside className="side">
+      <div className="mobile-bar">
+        <button className="menu-btn" onClick={() => setMenuOpen(true)} aria-label="Open menu">
+          <NavIcon>
+            <path d="M4 7h16M4 12h16M4 17h16" />
+          </NavIcon>
+        </button>
+        <img className="wordmark" src="/icons/wordmark" alt="Bopz" />
+        <span className="section-name">{current.label}</span>
+      </div>
+      <div className={`side-scrim${menuOpen ? " open" : ""}`} onClick={() => setMenuOpen(false)} />
+      <aside
+        className={`side${menuOpen ? " open" : ""}`}
+        onTouchStart={(e) => (swipeStart.current = e.touches[0].clientX)}
+        onTouchEnd={(e) => {
+          const start = swipeStart.current;
+          swipeStart.current = null;
+          if (start !== null && e.changedTouches[0].clientX - start < -60) setMenuOpen(false);
+        }}
+      >
         <div className="side-brand">
           <img className="wordmark" src="/icons/wordmark" alt="Bopz" />
           <small>Admin</small>
