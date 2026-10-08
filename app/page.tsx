@@ -1,47 +1,76 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { isStandalone } from "@/lib/device";
+import { pushSupported } from "@/lib/push";
 import InstallGate from "@/components/InstallGate";
 import Onboarding from "@/components/Onboarding";
 import Feed from "@/components/Feed";
 
-type Phase = { name: "loading" } | { name: "install" } | { name: "onboard" } | { name: "feed"; userId: string };
+type Permission = NotificationPermission | "unsupported";
 
 // Lets you test the full flow in a normal browser tab while running `npm run dev`.
 const ALLOW_BROWSER = process.env.NODE_ENV === "development";
 
+function readPermission(): Permission {
+  return pushSupported() ? Notification.permission : "unsupported";
+}
+
 export default function Home() {
-  const [phase, setPhase] = useState<Phase>({ name: "loading" });
+  const [standalone, setStandalone] = useState<boolean | null>(null);
+  const [userId, setUserId] = useState<string | null | undefined>(undefined);
+  const [permission, setPermission] = useState<Permission>("default");
+
+  const refreshPermission = useCallback(() => setPermission(readPermission()), []);
 
   useEffect(() => {
-    if (!isStandalone() && !ALLOW_BROWSER) {
-      setPhase({ name: "install" });
-      return;
-    }
+    const ok = isStandalone() || ALLOW_BROWSER;
+    setStandalone(ok);
+    if (!ok) return;
 
+    refreshPermission();
     const supabase = getSupabase();
-    supabase.auth.getSession().then(({ data }) => {
-      const user = data.session?.user;
-      setPhase(user ? { name: "feed", userId: user.id } : { name: "onboard" });
-    });
-
+    supabase.auth.getSession().then(({ data }) => setUserId(data.session?.user.id ?? null));
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) setPhase({ name: "feed", userId: session.user.id });
-      else setPhase({ name: "onboard" });
+      setUserId(session?.user.id ?? null);
     });
-    return () => listener.subscription.unsubscribe();
-  }, []);
 
-  if (phase.name === "loading") {
+    // Pick up changes made in the phone's Settings while the app was in the background.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refreshPermission();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", refreshPermission);
+
+    let status: PermissionStatus | null = null;
+    navigator.permissions
+      ?.query({ name: "notifications" })
+      .then((s) => {
+        status = s;
+        s.onchange = refreshPermission;
+      })
+      .catch(() => {});
+
+    return () => {
+      listener.subscription.unsubscribe();
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", refreshPermission);
+      if (status) status.onchange = null;
+    };
+  }, [refreshPermission]);
+
+  if (standalone === null || (standalone && userId === undefined)) {
     return (
       <main className="screen">
         <div className="spinner" />
       </main>
     );
   }
-  if (phase.name === "install") return <InstallGate />;
-  if (phase.name === "onboard") return <Onboarding />;
-  return <Feed key={phase.userId} userId={phase.userId} />;
+  if (!standalone) return <InstallGate />;
+
+  if (!userId || permission !== "granted") {
+    return <Onboarding hasAccount={!!userId} permission={permission} onPermissionChange={refreshPermission} />;
+  }
+  return <Feed key={userId} userId={userId} />;
 }

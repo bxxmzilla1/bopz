@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getSupabase, VIDEO_BUCKET } from "@/lib/supabase";
 import { pushSupported, subscribeToPush } from "@/lib/push";
 import VideoCard, { type FeedVideo } from "./VideoCard";
-import { BellIcon } from "./Icons";
 
 const PAGE_SIZE = 8;
 const SIGNED_URL_TTL = 60 * 60 * 6;
@@ -17,8 +16,6 @@ export default function Feed({ userId }: { userId: string }) {
   const [loading, setLoading] = useState(true);
   const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showNotifyPrompt, setShowNotifyPrompt] = useState(false);
-
   const containerRef = useRef<HTMLDivElement>(null);
   const fetching = useRef(false);
   const pendingLikes = useRef<Set<string>>(new Set());
@@ -85,11 +82,8 @@ export default function Feed({ userId }: { userId: string }) {
   }, [loadPage]);
 
   useEffect(() => {
-    if (!pushSupported()) return;
-    if (Notification.permission === "granted") {
+    if (pushSupported() && Notification.permission === "granted") {
       subscribeToPush().catch(() => {});
-    } else if (Notification.permission === "default") {
-      setShowNotifyPrompt(true);
     }
   }, []);
 
@@ -146,23 +140,11 @@ export default function Feed({ userId }: { userId: string }) {
     pendingLikes.current.delete(id);
   }
 
-  async function enableNotifications() {
-    const permission = await Notification.requestPermission();
-    setShowNotifyPrompt(false);
-    if (permission === "granted") await subscribeToPush().catch(() => {});
-  }
-
   return (
     <>
       <div className="topbar">
         <span className="brand">Bopz</span>
       </div>
-
-      {showNotifyPrompt && (
-        <button className="notify-pill" onClick={enableNotifications}>
-          <BellIcon /> Turn on notifications
-        </button>
-      )}
 
       <div className="feed" ref={containerRef}>
         {loading ? (

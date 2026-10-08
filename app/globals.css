@@ -444,26 +444,6 @@ button {
   text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
-.notify-pill {
-  position: fixed;
-  top: calc(52px + var(--safe-top));
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 6;
-  border: 1px solid var(--border);
-  background: rgba(20, 20, 20, 0.85);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border-radius: 999px;
-  padding: 10px 16px;
-  font-size: 14px;
-  font-weight: 600;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  white-space: nowrap;
-}
-
 .feed-empty {
   height: var(--vh);
   display: flex;
