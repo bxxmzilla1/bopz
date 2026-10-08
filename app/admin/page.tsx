@@ -30,6 +30,20 @@ function normalizeLink(input: string): string | null {
   }
 }
 
+function validateButton(
+  linkUrl: string,
+  linkLabel: string
+): { link_url: string | null; link_label: string | null } | { error: string } {
+  const label = linkLabel.trim();
+  if (!linkUrl.trim()) {
+    return label ? { error: "Enter the link the button should open." } : { link_url: null, link_label: null };
+  }
+  const link = normalizeLink(linkUrl);
+  if (!link) return { error: "That button link isn't a valid web address." };
+  if (!label) return { error: "Enter the button text people will see." };
+  return { link_url: link, link_label: label };
+}
+
 type NotificationLog = {
   id: string;
   title: string;
@@ -222,7 +236,7 @@ function Dashboard({ session }: { session: Session }) {
         ) : (
           <ul className="list">
             {videos.map((v) => (
-              <VideoRow key={v.id} video={v} onDeleted={refresh} />
+              <VideoRow key={v.id} video={v} onChanged={refresh} />
             ))}
           </ul>
         )}
@@ -326,19 +340,9 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
     e.preventDefault();
     if (!file) return;
 
-    let link: string | null = null;
-    if (linkUrl.trim()) {
-      link = normalizeLink(linkUrl);
-      if (!link) {
-        setStatus({ kind: "err", text: "That button link isn't a valid web address." });
-        return;
-      }
-      if (!linkLabel.trim()) {
-        setStatus({ kind: "err", text: "Enter the button text people will see." });
-        return;
-      }
-    } else if (linkLabel.trim()) {
-      setStatus({ kind: "err", text: "Enter the link the button should open." });
+    const button = validateButton(linkUrl, linkLabel);
+    if ("error" in button) {
+      setStatus({ kind: "err", text: button.error });
       return;
     }
 
@@ -359,8 +363,8 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
         storage_path: path,
         title: title.trim() || null,
         description: description.trim() || null,
-        link_url: link,
-        link_label: link ? linkLabel.trim() : null,
+        link_url: button.link_url,
+        link_label: button.link_label,
       });
       if (insertError) {
         await supabase.storage.from(VIDEO_BUCKET).remove([path]);
@@ -431,8 +435,9 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   );
 }
 
-function VideoRow({ video, onDeleted }: { video: AdminVideo; onDeleted: () => void }) {
+function VideoRow({ video, onChanged }: { video: AdminVideo; onChanged: () => void }) {
   const [busy, setBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
 
   async function remove() {
     if (!confirm(`Delete "${video.title || "this video"}"? This can't be undone.`)) return;
@@ -445,11 +450,11 @@ function VideoRow({ video, onDeleted }: { video: AdminVideo; onDeleted: () => vo
       return;
     }
     await supabase.storage.from(VIDEO_BUCKET).remove([video.storage_path]);
-    onDeleted();
+    onChanged();
   }
 
   return (
-    <li>
+    <li style={{ flexWrap: "wrap" }}>
       {video.url ? (
         <video className="thumb" src={`${video.url}#t=0.5`} muted playsInline preload="metadata" />
       ) : (
@@ -469,9 +474,95 @@ function VideoRow({ video, onDeleted }: { video: AdminVideo; onDeleted: () => vo
           </div>
         )}
       </div>
-      <button className="btn danger" onClick={remove} disabled={busy}>
-        {busy ? "…" : "Delete"}
-      </button>
+      <div style={{ display: "flex", gap: 8 }}>
+        <button className="btn" onClick={() => setEditing((v) => !v)} disabled={busy}>
+          {editing ? "Close" : "Edit"}
+        </button>
+        <button className="btn danger" onClick={remove} disabled={busy}>
+          {busy ? "…" : "Delete"}
+        </button>
+      </div>
+      {editing && (
+        <EditVideo
+          video={video}
+          onSaved={() => {
+            setEditing(false);
+            onChanged();
+          }}
+        />
+      )}
     </li>
+  );
+}
+
+function EditVideo({ video, onSaved }: { video: AdminVideo; onSaved: () => void }) {
+  const [title, setTitle] = useState(video.title ?? "");
+  const [description, setDescription] = useState(video.description ?? "");
+  const [linkUrl, setLinkUrl] = useState(video.link_url ?? "");
+  const [linkLabel, setLinkLabel] = useState(video.link_label ?? "");
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState<Status>(null);
+
+  async function save(e: FormEvent) {
+    e.preventDefault();
+    const button = validateButton(linkUrl, linkLabel);
+    if ("error" in button) {
+      setStatus({ kind: "err", text: button.error });
+      return;
+    }
+
+    setBusy(true);
+    setStatus(null);
+    const { error } = await getSupabase()
+      .from("videos")
+      .update({
+        title: title.trim() || null,
+        description: description.trim() || null,
+        link_url: button.link_url,
+        link_label: button.link_label,
+      })
+      .eq("id", video.id);
+    setBusy(false);
+    if (error) {
+      setStatus({ kind: "err", text: error.message });
+      return;
+    }
+    onSaved();
+  }
+
+  return (
+    <form onSubmit={save} style={{ width: "100%", paddingTop: 12 }}>
+      <label className="field">
+        Title
+        <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
+      </label>
+      <label className="field">
+        Description
+        <textarea value={description} maxLength={1000} onChange={(e) => setDescription(e.target.value)} />
+      </label>
+      <label className="field">
+        Button link (leave empty for no button)
+        <input
+          type="url"
+          inputMode="url"
+          placeholder="https://example.com"
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+        />
+      </label>
+      <label className="field">
+        Button text
+        <input
+          placeholder="e.g. Shop now"
+          value={linkLabel}
+          maxLength={40}
+          onChange={(e) => setLinkLabel(e.target.value)}
+        />
+      </label>
+      <button className="btn accent" type="submit" disabled={busy}>
+        {busy ? "Saving…" : "Save changes"}
+      </button>
+      {status && <p className={`status ${status.kind}`}>{status.text}</p>}
+    </form>
   );
 }
