@@ -460,9 +460,10 @@ button {
 }
 
 .topbar .brand {
-  display: block;
-  height: 30px;
-  width: auto;
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.01em;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
 }
 
 .feed-empty {
