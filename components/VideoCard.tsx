@@ -14,6 +14,7 @@ export type FeedVideo = {
   link_url: string | null;
   link_label: string | null;
   thumb_path?: string | null;
+  is_ad?: boolean;
   url: string | null;
   thumb_url?: string | null;
 };

@@ -40,6 +40,8 @@ function saveSeen(userId: string, seen: Set<string>) {
   }
 }
 
+type AdSettings = { link_url: string | null; link_label: string | null; every_n: number };
+
 export default function Feed({ userId }: { userId: string }) {
   const [byId, setById] = useState<Record<string, FeedVideo>>({});
   const [queue, setQueue] = useState<Entry[]>([]);
@@ -54,6 +56,43 @@ export default function Feed({ userId }: { userId: string }) {
   const seen = useRef<Set<string>>(new Set());
   const pass = useRef(0);
   const appendedAt = useRef(-1);
+  const regularIds = useRef<string[]>([]);
+  const adIds = useRef<string[]>([]);
+  const adEvery = useRef(0);
+  const adQueue = useRef<string[]>([]);
+  const sinceAd = useRef(0);
+  const adCount = useRef(0);
+  const lastAd = useRef<string | null>(null);
+
+  function nextAd(): string | null {
+    const ids = adIds.current;
+    if (!ids.length) return null;
+    if (!adQueue.current.length) {
+      const next = shuffle(ids);
+      if (next.length > 1 && next[0] === lastAd.current) [next[0], next[1]] = [next[1], next[0]];
+      adQueue.current = next;
+    }
+    const id = adQueue.current.shift()!;
+    lastAd.current = id;
+    return id;
+  }
+
+  // Slots an ad in after every `adEvery` regular videos; the count carries over between passes.
+  function withAds(ids: string[], p: number): Entry[] {
+    const out: Entry[] = [];
+    for (const id of ids) {
+      out.push({ key: `${p}-${id}`, id });
+      sinceAd.current += 1;
+      if (sinceAd.current < adEvery.current) continue;
+      sinceAd.current = 0;
+      const adId = nextAd();
+      if (adId) {
+        adCount.current += 1;
+        out.push({ key: `ad${adCount.current}-${adId}`, id: adId });
+      }
+    }
+    return out;
+  }
   const loadingRef = useRef(false);
   const tokenRef = useRef<string | null>(null);
 
@@ -106,24 +145,42 @@ export default function Feed({ userId }: { userId: string }) {
       ]);
       const thumbById = new Map(withThumb.map((r, i) => [r.id, thumbs[i]]));
 
-      const { data: likes } = await supabase.from("likes").select("video_id").eq("user_id", userId);
+      const [{ data: likes }, { data: ad }] = await Promise.all([
+        supabase.from("likes").select("video_id").eq("user_id", userId),
+        supabase.from("ad_settings").select("link_url,link_label,every_n").eq("id", 1).maybeSingle(),
+      ]);
+      const adSettings = ad as AdSettings | null;
 
       const map: Record<string, FeedVideo> = {};
-      rows.forEach((r, i) => (map[r.id] = { ...r, url: urls[i], thumb_url: thumbById.get(r.id) ?? null }));
+      rows.forEach((r, i) => {
+        const shared = r.is_ad ? { link_url: adSettings?.link_url ?? null, link_label: adSettings?.link_label ?? null } : {};
+        map[r.id] = { ...r, ...shared, url: urls[i], thumb_url: thumbById.get(r.id) ?? null };
+      });
 
       // Forget deleted videos so the seen list doesn't grow forever.
       const remembered = loadSeen(userId);
       seen.current = new Set([...remembered].filter((id) => map[id]));
       saveSeen(userId, seen.current);
 
-      const unseen = rows.map((r) => r.id).filter((id) => !seen.current.has(id));
-      const first = unseen.length ? unseen : shuffle(rows.map((r) => r.id));
+      const regular = rows.filter((r) => !r.is_ad).map((r) => r.id);
+      const ads = rows.filter((r) => r.is_ad).map((r) => r.id);
+      // With no regular videos, the ads are all there is to watch, so show them as the feed.
+      regularIds.current = regular.length ? regular : ads;
+      adIds.current = regular.length ? ads : [];
+      adEvery.current = Math.max(1, adSettings?.every_n ?? 5);
+      // Unseen ads first (newest first), then random cycles.
+      adQueue.current = adIds.current.filter((id) => !seen.current.has(id));
+      sinceAd.current = 0;
+      adCount.current = 0;
+
+      const unseen = regularIds.current.filter((id) => !seen.current.has(id));
+      const first = unseen.length ? unseen : shuffle(regularIds.current);
 
       pass.current = 0;
       appendedAt.current = -1;
       setById(map);
       setLiked(new Set((likes ?? []).map((l) => l.video_id)));
-      setQueue(first.map((id) => ({ key: `0-${id}`, id })));
+      setQueue(withAds(first, 0));
       setActive(0);
       containerRef.current?.scrollTo({ top: 0 });
       setError(null);
@@ -195,7 +252,7 @@ export default function Feed({ userId }: { userId: string }) {
 
   // Near the end, append another full pass of every video in a fresh random order.
   useEffect(() => {
-    const ids = Object.keys(byId);
+    const ids = regularIds.current;
     if (!ids.length || active < queue.length - 3 || appendedAt.current === queue.length) return;
     appendedAt.current = queue.length;
 
@@ -204,8 +261,9 @@ export default function Feed({ userId }: { userId: string }) {
     if (next.length > 1 && next[0] === lastId) [next[0], next[1]] = [next[1], next[0]];
 
     pass.current += 1;
-    const p = pass.current;
-    setQueue((q) => [...q, ...next.map((id) => ({ key: `${p}-${id}`, id }))]);
+    const entries = withAds(next, pass.current);
+    setQueue((q) => [...q, ...entries]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, queue, byId]);
 
   function applyLike(id: string, value: boolean) {

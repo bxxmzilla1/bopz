@@ -17,6 +17,7 @@ type AdminVideo = {
   link_url: string | null;
   link_label: string | null;
   thumb_path?: string | null;
+  is_ad?: boolean;
   url?: string;
   thumb_url?: string;
 };
@@ -194,7 +195,7 @@ function Login() {
   );
 }
 
-type Section = "overview" | "notify" | "upload" | "library" | "history" | "devices" | "countries";
+type Section = "overview" | "notify" | "upload" | "library" | "ads" | "history" | "devices" | "countries";
 
 const SECTIONS: { id: Section; label: string; title: string; subtitle: string; icon: React.ReactNode }[] = [
   {
@@ -224,6 +225,13 @@ const SECTIONS: { id: Section; label: string; title: string; subtitle: string; i
     title: "All videos",
     subtitle: "Preview, edit, or remove any video.",
     icon: <path d="M4 4h7v7H4V4zm9 0h7v7h-7V4zM4 13h7v7H4v-7zm9 0h7v7h-7v-7z" />,
+  },
+  {
+    id: "ads",
+    label: "Ads",
+    title: "Ads",
+    subtitle: "Videos mixed into the feed every few videos. They look like any other video.",
+    icon: <path d="M3 11v2a1 1 0 0 0 1 1h2l5 4V6L6 10H4a1 1 0 0 0-1 1zM15 9a3 3 0 0 1 0 6M18 6a7 7 0 0 1 0 12" />,
   },
   {
     id: "history",
@@ -385,8 +393,11 @@ function Dashboard({ session }: { session: Session }) {
   }
 
   const current = SECTIONS.find((s) => s.id === section)!;
+  const regularVideos = videos.filter((v) => !v.is_ad);
+  const adVideos = videos.filter((v) => v.is_ad);
   const badges: Partial<Record<Section, number | null>> = {
-    library: videos.length,
+    library: regularVideos.length,
+    ads: adVideos.length,
     history: logs.length,
     devices: subscriberCount,
   };
@@ -444,7 +455,7 @@ function Dashboard({ session }: { session: Session }) {
         {section === "overview" && (
           <>
             <div className="stat-grid">
-              <StatCard label="Videos" value={videos.length} />
+              <StatCard label="Videos" value={regularVideos.length} />
               <StatCard
                 label="Push devices"
                 value={subscriberCount ?? "–"}
@@ -483,7 +494,9 @@ function Dashboard({ session }: { session: Session }) {
 
         {section === "upload" && <UploadVideo onUploaded={refreshVideos} />}
 
-        {section === "library" && <VideoLibrary videos={videos} onChanged={refreshVideos} />}
+        {section === "library" && <VideoLibrary videos={regularVideos} onChanged={refreshVideos} />}
+
+        {section === "ads" && <AdsManager ads={adVideos} onChanged={refreshVideos} />}
 
         {section === "devices" && <DeviceLocations />}
 
@@ -901,6 +914,46 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
   );
 }
 
+/** Uploads the file, its first-frame thumbnail, and inserts the videos row. Throws on failure. */
+async function uploadVideoFile(
+  file: File,
+  fields: Record<string, string | number | boolean | null>,
+  onProgress: (text: string) => void
+) {
+  const supabase = getSupabase();
+  const ext = (file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
+  const path = `${crypto.randomUUID()}.${ext}`;
+
+  onProgress(`Uploading ${(file.size / 1024 / 1024).toFixed(1)} MB…`);
+  const { error: uploadError } = await supabase.storage
+    .from(VIDEO_BUCKET)
+    .upload(path, file, { contentType: file.type || "video/mp4", cacheControl: "31536000", upsert: false });
+  if (uploadError) throw uploadError;
+
+  // The thumbnail comes from the local file, so it costs no extra download.
+  onProgress("Creating thumbnail…");
+  const localUrl = URL.createObjectURL(file);
+  const thumb = await captureThumbnail(localUrl);
+  URL.revokeObjectURL(localUrl);
+  const thumbPath = thumbPathFor(path);
+  const hasThumb = !!thumb && (await uploadThumbnail(thumbPath, thumb));
+
+  const row: Record<string, string | number | boolean | null> = { ...fields, storage_path: path };
+  let { error: insertError } = await supabase
+    .from("videos")
+    .insert(hasThumb ? { ...row, thumb_path: thumbPath } : row);
+  if (insertError && hasThumb && /thumb_path/.test(insertError.message)) {
+    ({ error: insertError } = await supabase.from("videos").insert(row));
+  }
+  if (insertError) {
+    await supabase.storage.from(VIDEO_BUCKET).remove(hasThumb ? [path, thumbPath] : [path]);
+    if (/is_ad/.test(insertError.message)) {
+      throw new Error("The database isn't set up for ads yet. Run the ads SQL in Supabase.");
+    }
+    throw insertError;
+  }
+}
+
 function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
@@ -926,43 +979,12 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
     }
 
     setBusy(true);
-    setStatus({ kind: "info", text: `Uploading ${(file.size / 1024 / 1024).toFixed(1)} MB…` });
-
-    const supabase = getSupabase();
-    const ext = (file.name.split(".").pop() || "mp4").toLowerCase().replace(/[^a-z0-9]/g, "") || "mp4";
-    const path = `${crypto.randomUUID()}.${ext}`;
-
     try {
-      const { error: uploadError } = await supabase.storage
-        .from(VIDEO_BUCKET)
-        .upload(path, file, { contentType: file.type || "video/mp4", cacheControl: "31536000", upsert: false });
-      if (uploadError) throw uploadError;
-
-      // The thumbnail comes from the local file, so it costs no extra download.
-      setStatus({ kind: "info", text: "Creating thumbnail…" });
-      const localUrl = URL.createObjectURL(file);
-      const thumb = await captureThumbnail(localUrl);
-      URL.revokeObjectURL(localUrl);
-      const thumbPath = thumbPathFor(path);
-      const hasThumb = !!thumb && (await uploadThumbnail(thumbPath, thumb));
-
-      const row: Record<string, string | number | null> = {
-        storage_path: path,
-        link_url: button.link_url,
-        link_label: button.link_label,
-        likes_count: likesCount,
-      };
-      let { error: insertError } = await supabase
-        .from("videos")
-        .insert(hasThumb ? { ...row, thumb_path: thumbPath } : row);
-      if (insertError && hasThumb && /thumb_path/.test(insertError.message)) {
-        ({ error: insertError } = await supabase.from("videos").insert(row));
-      }
-      if (insertError) {
-        await supabase.storage.from(VIDEO_BUCKET).remove(hasThumb ? [path, thumbPath] : [path]);
-        throw insertError;
-      }
-
+      await uploadVideoFile(
+        file,
+        { link_url: button.link_url, link_label: button.link_label, likes_count: likesCount },
+        (text) => setStatus({ kind: "info", text })
+      );
       setStatus({ kind: "ok", text: "Uploaded! It's now at the top of the feed." });
       setFile(null);
       setLinkUrl("");
@@ -1018,9 +1040,179 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   );
 }
 
+function AdsManager({ ads, onChanged }: { ads: AdminVideo[]; onChanged: () => void }) {
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
+  const [everyN, setEveryN] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [settingsStatus, setSettingsStatus] = useState<Status>(null);
+
+  const [files, setFiles] = useState<File[]>([]);
+  const [hearts, setHearts] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<Status>(null);
+  const [inputKey, setInputKey] = useState(0);
+
+  useEffect(() => {
+    getSupabase()
+      .from("ad_settings")
+      .select("link_url,link_label,every_n")
+      .eq("id", 1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          setSettingsStatus({ kind: "err", text: "The database isn't set up for ads yet. Run the ads SQL in Supabase." });
+        } else if (data) {
+          setLinkUrl(data.link_url ?? "");
+          setLinkLabel(data.link_label ?? "");
+          setEveryN(String(data.every_n));
+        }
+        setLoaded(true);
+      });
+  }, []);
+
+  async function saveSettings(e: FormEvent) {
+    e.preventDefault();
+    const button = validateButton(linkUrl, linkLabel);
+    if ("error" in button) {
+      setSettingsStatus({ kind: "err", text: button.error });
+      return;
+    }
+    const n = Number(everyN);
+    if (!Number.isInteger(n) || n < 1 || n > 1000) {
+      setSettingsStatus({ kind: "err", text: "Enter how many videos to show between ads (1 to 1000)." });
+      return;
+    }
+    setSaving(true);
+    const { error } = await getSupabase()
+      .from("ad_settings")
+      .upsert({ id: 1, ...button, every_n: n, updated_at: new Date().toISOString() });
+    setSaving(false);
+    setSettingsStatus(error ? { kind: "err", text: error.message } : { kind: "ok", text: "Saved." });
+  }
+
+  async function upload(e: FormEvent) {
+    e.preventDefault();
+    if (!files.length) return;
+    const likesCount = parseHearts(hearts);
+    if (likesCount === null) {
+      setUploadStatus({ kind: "err", text: "Hearts must be a whole number of 0 or more." });
+      return;
+    }
+    setUploading(true);
+    try {
+      for (const [i, file] of files.entries()) {
+        const prefix = files.length > 1 ? `Video ${i + 1} of ${files.length}: ` : "";
+        await uploadVideoFile(file, { is_ad: true, likes_count: likesCount }, (text) =>
+          setUploadStatus({ kind: "info", text: prefix + text })
+        );
+      }
+      setUploadStatus({ kind: "ok", text: files.length > 1 ? `${files.length} ad videos uploaded.` : "Ad video uploaded." });
+      setFiles([]);
+      setHearts("");
+      setInputKey((k) => k + 1);
+    } catch (err) {
+      setUploadStatus({ kind: "err", text: (err as Error).message });
+    } finally {
+      setUploading(false);
+      onChanged();
+    }
+  }
+
+  return (
+    <>
+      <form className="panel" onSubmit={saveSettings}>
+        <div className="panel-head">
+          <h2>Ad settings</h2>
+        </div>
+        <p className="sub">Every ad video uses this button. Ads show up like normal videos, with no &ldquo;Ad&rdquo; label.</p>
+        <label className="field">
+          Show an ad after every
+          <input
+            type="number"
+            inputMode="numeric"
+            min={1}
+            max={1000}
+            step={1}
+            placeholder="e.g. 5"
+            value={everyN}
+            onChange={(e) => setEveryN(e.target.value)}
+            disabled={!loaded}
+          />
+          <span className="muted">videos the user scrolls through</span>
+        </label>
+        <label className="field">
+          Button link
+          <input
+            type="url"
+            inputMode="url"
+            placeholder="https://example.com"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            disabled={!loaded}
+          />
+        </label>
+        <label className="field">
+          Button text
+          <input
+            placeholder="e.g. Shop now"
+            value={linkLabel}
+            maxLength={40}
+            onChange={(e) => setLinkLabel(e.target.value)}
+            disabled={!loaded}
+          />
+        </label>
+        <button className="btn accent" type="submit" disabled={saving || !loaded}>
+          {saving ? "Saving…" : "Save settings"}
+        </button>
+        {settingsStatus && (
+          <p className={`status ${settingsStatus.kind === "info" ? "" : settingsStatus.kind}`}>{settingsStatus.text}</p>
+        )}
+      </form>
+
+      <form className="panel" onSubmit={upload}>
+        <div className="panel-head">
+          <h2>Upload ad videos</h2>
+        </div>
+        <label className="field">
+          Video files (you can pick several)
+          <input
+            key={inputKey}
+            type="file"
+            multiple
+            accept="video/mp4,video/quicktime,video/webm,video/*"
+            onChange={(e) => setFiles([...(e.target.files ?? [])])}
+            required
+          />
+        </label>
+        <HeartsField label="Starting hearts" value={hearts} onChange={setHearts} />
+        <button className="btn accent" type="submit" disabled={uploading || !files.length}>
+          {uploading ? "Uploading…" : files.length > 1 ? `Upload ${files.length} videos` : "Upload"}
+        </button>
+        {uploadStatus && (
+          <p className={`status ${uploadStatus.kind === "info" ? "" : uploadStatus.kind}`}>{uploadStatus.text}</p>
+        )}
+      </form>
+
+      <VideoLibrary videos={ads} onChanged={onChanged} canEdit={false} emptyText="No ad videos yet." />
+    </>
+  );
+}
+
 const PER_PAGE = 16;
 
-function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: () => void }) {
+function VideoLibrary({
+  videos,
+  onChanged,
+  canEdit = true,
+  emptyText = "No videos uploaded yet.",
+}: {
+  videos: AdminVideo[];
+  onChanged: () => void;
+  canEdit?: boolean;
+  emptyText?: string;
+}) {
   const [page, setPage] = useState(0);
   const [previewing, setPreviewing] = useState<AdminVideo | null>(null);
   const [editing, setEditing] = useState<AdminVideo | null>(null);
@@ -1062,7 +1254,7 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
   if (videos.length === 0) {
     return (
       <section className="panel">
-        <p className="empty">No videos uploaded yet.</p>
+        <p className="empty">{emptyText}</p>
       </section>
     );
   }
@@ -1076,7 +1268,7 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
             video={v}
             thumbUrl={localThumbs[v.id] ?? v.thumb_url}
             onPreview={() => setPreviewing(v)}
-            onEdit={() => setEditing(v)}
+            onEdit={canEdit ? () => setEditing(v) : undefined}
             onDeleted={onChanged}
           />
         ))}
@@ -1138,7 +1330,7 @@ function VideoTile({
   video: AdminVideo;
   thumbUrl?: string;
   onPreview: () => void;
-  onEdit: () => void;
+  onEdit?: () => void;
   onDeleted: () => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -1188,9 +1380,11 @@ function VideoTile({
         <button className="btn" onClick={onPreview}>
           Preview
         </button>
-        <button className="btn" onClick={onEdit}>
-          Edit
-        </button>
+        {onEdit && (
+          <button className="btn" onClick={onEdit}>
+            Edit
+          </button>
+        )}
         <button className="btn danger" onClick={remove} disabled={busy}>
           {busy ? "…" : "Delete"}
         </button>
