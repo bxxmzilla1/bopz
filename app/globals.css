@@ -26,6 +26,12 @@ body {
   overscroll-behavior: none;
 }
 
+/* iOS home-screen apps with a translucent status bar only paint the document's height,
+   which comes up short by the status bar, leaving a black strip at the bottom. */
+html {
+  min-height: calc(100% + env(safe-area-inset-top, 0px));
+}
+
 button {
   font: inherit;
   color: inherit;
@@ -168,6 +174,7 @@ button {
   right: 0;
   height: var(--vh);
   overflow-y: scroll;
+  overscroll-behavior: contain;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
   background: #000;
@@ -267,7 +274,8 @@ button {
 .rail {
   position: absolute;
   right: 10px;
-  bottom: calc(40px + var(--safe-bottom));
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   flex-direction: column;
   align-items: center;
