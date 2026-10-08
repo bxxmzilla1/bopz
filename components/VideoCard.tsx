@@ -128,15 +128,18 @@ export default function VideoCard({ video, index, active, near, muted, liked, on
 
       {(video.title || video.description) && <div className="shade" />}
 
-      {(video.title || video.description || video.link_url) && (
-        <div className="caption">
+      {(video.title || video.description) && (
+        <div className={video.link_url ? "caption has-cta" : "caption"}>
           {video.title && <h2>{video.title}</h2>}
           {video.description && <p>{video.description}</p>}
-          {video.link_url && (
-            <a className="cta" href={video.link_url} target="_blank" rel="noopener noreferrer">
-              {video.link_label || "Open"}
-            </a>
-          )}
+        </div>
+      )}
+
+      {video.link_url && (
+        <div className="cta-wrap">
+          <a className="cta" href={video.link_url} target="_blank" rel="noopener noreferrer">
+            {video.link_label || "Open"}
+          </a>
         </div>
       )}
 

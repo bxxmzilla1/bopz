@@ -247,28 +247,86 @@ button {
   overflow: hidden;
 }
 
+.caption.has-cta {
+  bottom: calc(110px + var(--safe-bottom));
+}
+
+.cta-wrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(32px + var(--safe-bottom));
+  display: flex;
+  justify-content: center;
+  padding: 0 24px;
+  pointer-events: none;
+}
+
 .cta {
+  position: relative;
   pointer-events: auto;
   display: inline-block;
-  margin-top: 12px;
-  padding: 11px 22px;
+  min-width: 220px;
+  max-width: 100%;
+  padding: 17px 40px;
   border-radius: 999px;
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  text-align: center;
   color: #fff;
   text-decoration: none;
-  text-shadow: none;
   background: linear-gradient(135deg, var(--accent), var(--accent-2));
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
-  max-width: 100%;
-  overflow: hidden;
+  overflow: visible;
   text-overflow: ellipsis;
   white-space: nowrap;
-  transition: transform 0.15s ease;
+  animation: cta-pulse 1.6s ease-in-out infinite;
+}
+
+/* Expanding ring behind the button. */
+.cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  border: 2px solid rgba(255, 45, 111, 0.8);
+  animation: cta-ring 1.6s ease-out infinite;
+  pointer-events: none;
 }
 
 .cta:active {
-  transform: scale(0.96);
+  animation-play-state: paused;
+  transform: scale(0.95);
+}
+
+@keyframes cta-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 14px rgba(255, 45, 111, 0.55), 0 0 32px rgba(123, 47, 247, 0.35);
+  }
+  50% {
+    transform: scale(1.07);
+    box-shadow: 0 0 26px rgba(255, 45, 111, 0.95), 0 0 60px rgba(123, 47, 247, 0.65);
+  }
+}
+
+@keyframes cta-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  100% {
+    transform: scale(1.35, 1.6);
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cta,
+  .cta::after {
+    animation: none;
+  }
 }
 
 .rail {
