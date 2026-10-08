@@ -832,6 +832,8 @@ function AllowedCountries() {
   );
 }
 
+const PICK_PER_PAGE = 8;
+
 function SendNotification({
   session,
   videos,
@@ -844,7 +846,12 @@ function SendNotification({
   const [title, setTitle] = useState("");
   const [videoId, setVideoId] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
+  const [pickPage, setPickPage] = useState(0);
   const picked = videos.find((v) => v.id === videoId) ?? null;
+  const newestFirst = [...videos].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const pickPages = Math.max(1, Math.ceil(newestFirst.length / PICK_PER_PAGE));
+  const pickCurrent = Math.min(pickPage, pickPages - 1);
+  const pickShown = newestFirst.slice(pickCurrent * PICK_PER_PAGE, (pickCurrent + 1) * PICK_PER_PAGE);
   const url = picked ? `/?v=${picked.id}` : "/";
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
@@ -897,7 +904,14 @@ function SendNotification({
             ) : (
               <span className="grow muted">None, opens the feed</span>
             )}
-            <button type="button" className="btn" onClick={() => setPicking(true)}>
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setPickPage(0);
+                setPicking(true);
+              }}
+            >
               {picked ? "Change" : "Choose video"}
             </button>
             {picked && (
@@ -938,7 +952,7 @@ function SendNotification({
             <p className="empty">No videos uploaded yet.</p>
           ) : (
             <div className="pick-grid">
-              {videos.map((v) => (
+              {pickShown.map((v) => (
                 <button
                   key={v.id}
                   type="button"
@@ -952,6 +966,19 @@ function SendNotification({
                   <span className="pick-label">{v.title || new Date(v.created_at).toLocaleDateString()}</span>
                 </button>
               ))}
+            </div>
+          )}
+          {pickPages > 1 && (
+            <div className="pick-pager">
+              <button className="btn" onClick={() => setPickPage(pickCurrent - 1)} disabled={pickCurrent === 0}>
+                Previous
+              </button>
+              <span className="muted">
+                Page {pickCurrent + 1} of {pickPages}
+              </span>
+              <button className="btn" onClick={() => setPickPage(pickCurrent + 1)} disabled={pickCurrent >= pickPages - 1}>
+                Next
+              </button>
             </div>
           )}
         </Modal>
