@@ -130,7 +130,7 @@ export default function Feed({ userId }: { userId: string }) {
   useEffect(() => {
     let last = 0;
     const sync = () => {
-      if (document.visibilityState !== "visible" || Date.now() - last < 10 * 60 * 1000) return;
+      if (document.visibilityState !== "visible" || Date.now() - last < 60 * 1000) return;
       if (pushSupported() && Notification.permission === "granted") {
         last = Date.now();
         subscribeToPush().catch(() => {});

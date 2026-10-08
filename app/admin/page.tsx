@@ -221,6 +221,32 @@ function Dashboard({ session }: { session: Session }) {
     refresh();
   }, [refresh]);
 
+  const [resetting, setResetting] = useState(false);
+
+  async function resetDevices() {
+    if (
+      !confirm(
+        "Reset push devices to 0?\n\nEach device is added back automatically the next time its owner opens the app. Until then, it won't receive notifications."
+      )
+    )
+      return;
+    setResetting(true);
+    try {
+      const { data } = await getSupabase().auth.getSession();
+      const res = await fetch("/api/admin/reset-devices", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${data.session?.access_token ?? session.access_token}` },
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error ?? "Reset failed");
+      await refreshDevices();
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setResetting(false);
+    }
+  }
+
   const totalLikes = videos.reduce((sum, v) => sum + v.likes_count, 0);
 
   return (
@@ -247,6 +273,14 @@ function Dashboard({ session }: { session: Session }) {
           {activeCount !== null && (
             <span style={{ display: "block", fontSize: 12, marginTop: 2 }}>{activeCount} opened the app this week</span>
           )}
+          <button
+            className="btn danger"
+            style={{ marginTop: 10, padding: "6px 12px", fontSize: 13 }}
+            onClick={resetDevices}
+            disabled={resetting}
+          >
+            {resetting ? "Resetting…" : "Reset"}
+          </button>
         </div>
       </div>
 

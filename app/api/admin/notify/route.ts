@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import webpush, { type PushSubscription, type WebPushError } from "web-push";
+import { authenticateAdmin, requireEnv, serviceClient } from "@/lib/server/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,31 +10,21 @@ const BATCH_SIZE = 50;
 
 type SubscriptionRow = { id: string; endpoint: string; p256dh: string; auth: string };
 
-function env(name: string): string {
-  const value = process.env[name];
-  if (!value) throw new Error(`Missing environment variable ${name}`);
-  return value;
-}
-
 export async function POST(req: Request) {
   let supabase;
   try {
-    supabase = createClient(env("NEXT_PUBLIC_SUPABASE_URL"), env("SUPABASE_SERVICE_ROLE_KEY"), {
-      auth: { persistSession: false, autoRefreshToken: false },
-    });
-    webpush.setVapidDetails(env("VAPID_SUBJECT"), env("NEXT_PUBLIC_VAPID_PUBLIC_KEY"), env("VAPID_PRIVATE_KEY"));
+    supabase = serviceClient();
+    webpush.setVapidDetails(
+      requireEnv("VAPID_SUBJECT"),
+      requireEnv("NEXT_PUBLIC_VAPID_PUBLIC_KEY"),
+      requireEnv("VAPID_PRIVATE_KEY")
+    );
   } catch (err) {
     return NextResponse.json({ error: (err as Error).message }, { status: 500 });
   }
 
-  const token = req.headers.get("authorization")?.replace(/^Bearer\s+/i, "");
-  if (!token) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { data: auth, error: authError } = await supabase.auth.getUser(token);
-  if (authError || !auth.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-
-  const { data: admin } = await supabase.from("admins").select("user_id").eq("user_id", auth.user.id).maybeSingle();
-  if (!admin) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const auth = await authenticateAdmin(req, supabase);
+  if ("response" in auth) return auth.response;
 
   let input: { title?: unknown; body?: unknown; url?: unknown };
   try {
