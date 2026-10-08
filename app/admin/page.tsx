@@ -6,6 +6,7 @@ import { getSupabase, VIDEO_BUCKET } from "@/lib/supabase";
 import { formatCount } from "@/lib/device";
 import { COUNTRY_CODES, countryFlag, countryName } from "@/lib/countries";
 import { captureThumbnail, isCurrentThumb, thumbPathFor, uploadThumbnail } from "@/lib/thumbnail";
+import LandingBackground from "@/components/LandingBackground";
 
 type AdminVideo = {
   id: string;
@@ -196,7 +197,7 @@ function Login() {
   );
 }
 
-type Section = "overview" | "notify" | "upload" | "library" | "ads" | "history" | "devices" | "countries";
+type Section = "overview" | "notify" | "upload" | "library" | "ads" | "history" | "devices" | "countries" | "settings";
 
 const SECTIONS: { id: Section; label: string; title: string; subtitle: string; icon: React.ReactNode }[] = [
   {
@@ -254,6 +255,18 @@ const SECTIONS: { id: Section; label: string; title: string; subtitle: string; i
     title: "Allowed countries",
     subtitle: "Choose which countries can open Bopz.",
     icon: <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />,
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    title: "Settings",
+    subtitle: "Customize how Bopz looks to visitors.",
+    icon: (
+      <>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+      </>
+    ),
   },
 ];
 
@@ -527,6 +540,8 @@ function Dashboard({ session }: { session: Session }) {
         {section === "devices" && <DeviceLocations />}
 
         {section === "countries" && <AllowedCountries />}
+
+        {section === "settings" && <SettingsPanel videos={regularVideos} />}
 
         {section === "history" && (
           <section className="panel">
@@ -872,12 +887,7 @@ function SendNotification({
   const [title, setTitle] = useState("");
   const [videoId, setVideoId] = useState<string | null>(null);
   const [picking, setPicking] = useState(false);
-  const [pickPage, setPickPage] = useState(0);
   const picked = videos.find((v) => v.id === videoId) ?? null;
-  const newestFirst = [...videos].sort((a, b) => b.created_at.localeCompare(a.created_at));
-  const pickPages = Math.max(1, Math.ceil(newestFirst.length / PICK_PER_PAGE));
-  const pickCurrent = Math.min(pickPage, pickPages - 1);
-  const pickShown = newestFirst.slice(pickCurrent * PICK_PER_PAGE, (pickCurrent + 1) * PICK_PER_PAGE);
   const url = picked ? `/?v=${picked.id}` : "/";
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
@@ -933,10 +943,7 @@ function SendNotification({
             <button
               type="button"
               className="btn"
-              onClick={() => {
-                setPickPage(0);
-                setPicking(true);
-              }}
+              onClick={() => setPicking(true)}
             >
               {picked ? "Change" : "Choose video"}
             </button>
@@ -972,42 +979,238 @@ function SendNotification({
       </div>
 
       {picking && (
-        <Modal onClose={() => setPicking(false)} wide>
-          <h2 style={{ margin: "0 0 12px", fontSize: 18 }}>Choose a video</h2>
-          {videos.length === 0 ? (
-            <p className="empty">No videos uploaded yet.</p>
-          ) : (
-            <div className="pick-grid">
-              {pickShown.map((v) => (
-                <button
-                  key={v.id}
-                  type="button"
-                  className={`pick-item${v.id === videoId ? " on" : ""}`}
-                  onClick={() => {
-                    setVideoId(v.id);
-                    setPicking(false);
-                  }}
-                >
-                  {v.thumb_url ? <img src={v.thumb_url} alt="" loading="lazy" /> : <span className="pick-none">No preview</span>}
-                  <span className="pick-label">{v.title || new Date(v.created_at).toLocaleDateString()}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          {pickPages > 1 && (
-            <div className="pick-pager">
-              <button className="btn" onClick={() => setPickPage(pickCurrent - 1)} disabled={pickCurrent === 0}>
-                Previous
-              </button>
-              <span className="muted">
-                Page {pickCurrent + 1} of {pickPages}
+        <VideoPicker
+          videos={videos}
+          selectedId={videoId}
+          onPick={(id) => {
+            setVideoId(id);
+            setPicking(false);
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function VideoPicker({
+  videos,
+  selectedId,
+  onPick,
+  onClose,
+}: {
+  videos: AdminVideo[];
+  selectedId: string | null;
+  onPick: (id: string) => void;
+  onClose: () => void;
+}) {
+  const [page, setPage] = useState(0);
+  const newestFirst = [...videos].sort((a, b) => b.created_at.localeCompare(a.created_at));
+  const pages = Math.max(1, Math.ceil(newestFirst.length / PICK_PER_PAGE));
+  const current = Math.min(page, pages - 1);
+  const shown = newestFirst.slice(current * PICK_PER_PAGE, (current + 1) * PICK_PER_PAGE);
+
+  return (
+    <Modal onClose={onClose} wide>
+      <h2 style={{ margin: "0 0 12px", fontSize: 18 }}>Choose a video</h2>
+      {videos.length === 0 ? (
+        <p className="empty">No videos uploaded yet.</p>
+      ) : (
+        <div className="pick-grid">
+          {shown.map((v) => (
+            <button
+              key={v.id}
+              type="button"
+              className={`pick-item${v.id === selectedId ? " on" : ""}`}
+              onClick={() => onPick(v.id)}
+            >
+              {v.thumb_url ? <img src={v.thumb_url} alt="" loading="lazy" /> : <span className="pick-none">No preview</span>}
+              <span className="pick-label">{v.title || new Date(v.created_at).toLocaleDateString()}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {pages > 1 && (
+        <div className="pick-pager">
+          <button className="btn" onClick={() => setPage(current - 1)} disabled={current === 0}>
+            Previous
+          </button>
+          <span className="muted">
+            Page {current + 1} of {pages}
+          </span>
+          <button className="btn" onClick={() => setPage(current + 1)} disabled={current >= pages - 1}>
+            Next
+          </button>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+const SETTINGS_TABS = [{ id: "landing", label: "Background Landing Page" }] as const;
+type SettingsTab = (typeof SETTINGS_TABS)[number]["id"];
+
+function SettingsPanel({ videos }: { videos: AdminVideo[] }) {
+  const [tab, setTab] = useState<SettingsTab>("landing");
+  return (
+    <>
+      <div className="tabs" role="tablist">
+        {SETTINGS_TABS.map((t) => (
+          <button
+            key={t.id}
+            role="tab"
+            aria-selected={tab === t.id}
+            className={`tab${tab === t.id ? " on" : ""}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === "landing" && <LandingSettings videos={videos} />}
+    </>
+  );
+}
+
+const LANDING_SLOTS = 3;
+
+function LandingSettings({ videos }: { videos: AdminVideo[] }) {
+  const [slots, setSlots] = useState<(string | null)[]>(Array(LANDING_SLOTS).fill(null));
+  const [opacity, setOpacity] = useState(60);
+  const [picking, setPicking] = useState<number | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<Status>(null);
+
+  useEffect(() => {
+    getSupabase()
+      .from("landing_settings")
+      .select("video_ids,overlay_opacity")
+      .eq("id", 1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          setStatus({ kind: "err", text: "The database isn't set up for this yet. Run the landing page SQL in Supabase." });
+        } else if (data) {
+          const ids = (data.video_ids ?? []) as string[];
+          setSlots(Array.from({ length: LANDING_SLOTS }, (_, i) => ids[i] ?? null));
+          setOpacity(Math.round(Number(data.overlay_opacity ?? 0.6) * 100));
+        }
+        setLoaded(true);
+      });
+  }, []);
+
+  const byId = new Map(videos.map((v) => [v.id, v]));
+  const chosen = slots.map((id) => (id ? byId.get(id) ?? null : null));
+  const previewVideos = chosen
+    .filter((v): v is AdminVideo => !!v?.url)
+    .map((v) => ({ url: v.url!, poster: v.thumb_url ?? null }));
+
+  async function save() {
+    setSaving(true);
+    const { error } = await getSupabase()
+      .from("landing_settings")
+      .upsert({
+        id: 1,
+        video_ids: slots.filter((id): id is string => !!id && byId.has(id)),
+        overlay_opacity: opacity / 100,
+        updated_at: new Date().toISOString(),
+      });
+    setSaving(false);
+    setStatus(
+      error
+        ? { kind: "err", text: error.message }
+        : { kind: "ok", text: "Saved. Visitors see the new background within a few minutes." }
+    );
+  }
+
+  return (
+    <div className="two-col">
+      <section className="panel">
+        <div className="panel-head">
+          <h2>Background videos</h2>
+        </div>
+        <p className="sub">Up to 3 videos play one after the other, in a loop, behind the install page.</p>
+
+        <div className="slot-list">
+          {chosen.map((v, i) => (
+            <div key={i} className="slot">
+              <span className="slot-num">{i + 1}</span>
+              <span className="pick-thumb">{v?.thumb_url && <img src={v.thumb_url} alt="" />}</span>
+              <span className="grow">
+                {v ? (
+                  <>
+                    <b>{v.title || "Untitled"}</b>
+                    <span className="muted">{new Date(v.created_at).toLocaleDateString()}</span>
+                  </>
+                ) : (
+                  <span className="muted">Empty</span>
+                )}
               </span>
-              <button className="btn" onClick={() => setPickPage(pickCurrent + 1)} disabled={pickCurrent >= pickPages - 1}>
-                Next
+              <button type="button" className="btn" onClick={() => setPicking(i)} disabled={!loaded}>
+                {v ? "Change" : "Choose"}
               </button>
+              {v && (
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setSlots((s) => s.map((id, j) => (j === i ? null : id)))}
+                >
+                  Remove
+                </button>
+              )}
             </div>
-          )}
-        </Modal>
+          ))}
+        </div>
+
+        <label className="field" style={{ marginTop: 18 }}>
+          <span className="range-head">
+            Black overlay opacity <b>{opacity}%</b>
+          </span>
+          <input
+            type="range"
+            className="range"
+            min={0}
+            max={100}
+            step={1}
+            value={opacity}
+            onChange={(e) => setOpacity(Number(e.target.value))}
+            disabled={!loaded}
+            style={{ "--fill": `${opacity}%` } as React.CSSProperties}
+          />
+        </label>
+
+        <button className="btn accent" onClick={save} disabled={saving || !loaded}>
+          {saving ? "Saving…" : "Save"}
+        </button>
+        {status && <p className={`status ${status.kind === "info" ? "" : status.kind}`}>{status.text}</p>}
+      </section>
+
+      <section className="panel">
+        <div className="muted" style={{ marginBottom: 12, fontSize: 13 }}>
+          Live preview
+        </div>
+        <div className="landing-preview">
+          <LandingBackground videos={previewVideos} opacity={opacity / 100} />
+          <div className="landing-preview-content">
+            <img src="/icons/192" alt="" />
+            <b>Get Bopz</b>
+            <span>Videos can only be watched in the app. Add Bopz to your home screen.</span>
+            <i>Tap Share, then Add to Home Screen</i>
+          </div>
+        </div>
+      </section>
+
+      {picking !== null && (
+        <VideoPicker
+          videos={videos}
+          selectedId={slots[picking]}
+          onPick={(id) => {
+            setSlots((s) => s.map((cur, j) => (j === picking ? id : cur)));
+            setPicking(null);
+          }}
+          onClose={() => setPicking(null)}
+        />
       )}
     </div>
   );

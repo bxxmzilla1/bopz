@@ -53,6 +53,42 @@ button {
     radial-gradient(120% 80% at 50% 100%, rgba(168, 85, 247, 0.3), transparent 60%), #000;
 }
 
+/* Landing page with a looping video background */
+.screen.landing {
+  position: relative;
+  isolation: isolate;
+  background: #000;
+}
+
+.screen.landing > :not(.landing-bg) {
+  position: relative;
+  z-index: 1;
+}
+
+.landing-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  background: #000;
+  pointer-events: none;
+}
+
+.landing-bg video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.landing-overlay {
+  position: absolute;
+  inset: 0;
+  background: #000;
+  transition: opacity 0.15s linear;
+}
+
 .logo {
   width: 88px;
   height: 88px;
@@ -991,6 +1027,169 @@ button {
 
 .modal.wide {
   width: min(520px, 100%);
+}
+
+/* Settings tabs */
+.tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab {
+  flex: none;
+  padding: 9px 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--soft);
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: #fff;
+}
+
+.tab.on {
+  color: #fff;
+  border-color: rgba(168, 85, 247, 0.55);
+  background: rgba(168, 85, 247, 0.16);
+}
+
+/* Landing background slots */
+.slot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.slot .grow {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+}
+
+.slot-num {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(168, 85, 247, 0.2);
+  color: #d8b4fe;
+}
+
+.range-head {
+  display: flex;
+  justify-content: space-between;
+}
+
+.range-head b {
+  color: #fff;
+}
+
+.range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  margin: 12px 0 18px;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--accent) var(--fill, 50%), rgba(255, 255, 255, 0.12) var(--fill, 50%)) !important;
+  cursor: pointer;
+}
+
+.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--accent);
+  box-shadow: 0 0 0 4px rgba(168, 85, 247, 0.2);
+}
+
+.range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  border: 3px solid var(--accent);
+}
+
+/* Phone-shaped live preview of the landing page */
+.landing-preview {
+  position: relative;
+  width: min(270px, 100%);
+  aspect-ratio: 9 / 19.5;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 6px solid #1c1726;
+  border-radius: 36px;
+  background: #000;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+.landing-preview-content {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 20px;
+  text-align: center;
+}
+
+.landing-preview-content img {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+  margin-bottom: 4px;
+}
+
+.landing-preview-content b {
+  font-size: 20px;
+}
+
+.landing-preview-content span {
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.landing-preview-content i {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-style: normal;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
 /* Video drop zone */
