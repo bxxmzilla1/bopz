@@ -161,11 +161,80 @@ function Login() {
   );
 }
 
+type Section = "overview" | "notify" | "videos" | "history" | "devices";
+
+const SECTIONS: { id: Section; label: string; title: string; subtitle: string; icon: React.ReactNode }[] = [
+  {
+    id: "overview",
+    label: "Overview",
+    title: "Overview",
+    subtitle: "How Bopz is doing at a glance.",
+    icon: <path d="M4 13h6V4H4v9zm0 7h6v-5H4v5zm10 0h6v-9h-6v9zm0-16v5h6V4h-6z" />,
+  },
+  {
+    id: "notify",
+    label: "Send notification",
+    title: "Send notification",
+    subtitle: "Pops up on every phone that installed the app.",
+    icon: <path d="M18 16v-5a6 6 0 1 0-12 0v5l-2 2h16l-2-2zM10 20a2 2 0 0 0 4 0" />,
+  },
+  {
+    id: "videos",
+    label: "Video posts",
+    title: "Video posts",
+    subtitle: "Upload, edit, and remove videos in the feed.",
+    icon: <path d="M4 5h11a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1zm12 5 5-3v10l-5-3" />,
+  },
+  {
+    id: "history",
+    label: "Notification history",
+    title: "Notification history",
+    subtitle: "Everything you've sent and how many phones got it.",
+    icon: <path d="M12 7v5l3 2M21 12a9 9 0 1 1-3-6.7M21 4v5h-5" />,
+  },
+  {
+    id: "devices",
+    label: "Push devices",
+    title: "Push devices",
+    subtitle: "Phones that installed Bopz and allowed notifications.",
+    icon: <path d="M8 2h8a2 2 0 0 1 2 2v16a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2zm3 17h2" />,
+  },
+];
+
+function NavIcon({ children }: { children: React.ReactNode }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+
 function Dashboard({ session }: { session: Session }) {
+  const [section, setSection] = useState<Section>("overview");
   const [videos, setVideos] = useState<AdminVideo[]>([]);
   const [logs, setLogs] = useState<NotificationLog[]>([]);
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
   const [activeCount, setActiveCount] = useState<number | null>(null);
+  const [resetting, setResetting] = useState<"devices" | "history" | null>(null);
+
+  useEffect(() => {
+    const fromHash = window.location.hash.slice(1) as Section;
+    if (SECTIONS.some((s) => s.id === fromHash)) setSection(fromHash);
+  }, []);
+
+  function go(next: Section) {
+    setSection(next);
+    window.history.replaceState(null, "", `#${next}`);
+    window.scrollTo({ top: 0 });
+  }
 
   const refreshDevices = useCallback(async () => {
     const supabase = getSupabase();
@@ -189,19 +258,24 @@ function Dashboard({ session }: { session: Session }) {
     };
   }, [refreshDevices]);
 
+  const refreshLogs = useCallback(async () => {
+    const { data } = await getSupabase()
+      .from("notifications")
+      .select("id,title,body,sent_count,failed_count,created_at")
+      .order("created_at", { ascending: false })
+      .limit(100);
+    setLogs((data ?? []) as NotificationLog[]);
+  }, []);
+
   const refresh = useCallback(async () => {
     const supabase = getSupabase();
-    const [vids, notifs] = await Promise.all([
+    const [vids] = await Promise.all([
       supabase
         .from("videos")
         .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
         .order("created_at", { ascending: false })
         .limit(200),
-      supabase
-        .from("notifications")
-        .select("id,title,body,sent_count,failed_count,created_at")
-        .order("created_at", { ascending: false })
-        .limit(20),
+      refreshLogs(),
       refreshDevices(),
     ]);
 
@@ -214,14 +288,22 @@ function Dashboard({ session }: { session: Session }) {
       rows.forEach((r, i) => (r.url = signed?.[i]?.signedUrl ?? undefined));
     }
     setVideos(rows);
-    setLogs((notifs.data ?? []) as NotificationLog[]);
-  }, [refreshDevices]);
+  }, [refreshDevices, refreshLogs]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
-  const [resetting, setResetting] = useState(false);
+  async function adminPost(path: string) {
+    const { data } = await getSupabase().auth.getSession();
+    const res = await fetch(path, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${data.session?.access_token ?? session.access_token}` },
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json.error ?? "Request failed");
+    return json;
+  }
 
   async function resetDevices() {
     if (
@@ -230,98 +312,220 @@ function Dashboard({ session }: { session: Session }) {
       )
     )
       return;
-    setResetting(true);
+    setResetting("devices");
     try {
-      const { data } = await getSupabase().auth.getSession();
-      const res = await fetch("/api/admin/reset-devices", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${data.session?.access_token ?? session.access_token}` },
-      });
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Reset failed");
+      await adminPost("/api/admin/reset-devices");
       await refreshDevices();
     } catch (err) {
       alert((err as Error).message);
     } finally {
-      setResetting(false);
+      setResetting(null);
+    }
+  }
+
+  async function resetHistory() {
+    if (!confirm("Delete all notification history? This can't be undone.")) return;
+    setResetting("history");
+    try {
+      await adminPost("/api/admin/reset-history");
+      await refreshLogs();
+    } catch (err) {
+      alert((err as Error).message);
+    } finally {
+      setResetting(null);
     }
   }
 
   const totalLikes = videos.reduce((sum, v) => sum + v.likes_count, 0);
+  const current = SECTIONS.find((s) => s.id === section)!;
+  const topVideos = [...videos].sort((a, b) => b.likes_count - a.likes_count).slice(0, 5);
+  const badges: Partial<Record<Section, number | null>> = {
+    videos: videos.length,
+    history: logs.length,
+    devices: subscriberCount,
+  };
 
   return (
-    <main className="admin">
-      <header>
-        <h1>Bopz Admin</h1>
-        <button className="btn" onClick={() => getSupabase().auth.signOut()}>
-          Sign out
-        </button>
-      </header>
-
-      <div className="stats">
-        <div className="stat">
-          <b>{videos.length}</b>
-          <span>Videos</span>
+    <div className="dash">
+      <aside className="side">
+        <div className="side-brand">
+          <img src="/icons/96" alt="" />
+          <span>Bopz</span>
+          <small>Admin</small>
         </div>
-        <div className="stat">
-          <b>{formatCount(totalLikes)}</b>
-          <span>Hearts</span>
-        </div>
-        <div className="stat">
-          <b>{subscriberCount ?? "–"}</b>
-          <span>Push devices</span>
-          {activeCount !== null && (
-            <span style={{ display: "block", fontSize: 12, marginTop: 2 }}>{activeCount} opened the app this week</span>
-          )}
-          <button
-            className="btn danger"
-            style={{ marginTop: 10, padding: "6px 12px", fontSize: 13 }}
-            onClick={resetDevices}
-            disabled={resetting}
-          >
-            {resetting ? "Resetting…" : "Reset"}
+        <nav>
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              className={`nav-item${section === s.id ? " active" : ""}`}
+              onClick={() => go(s.id)}
+            >
+              <NavIcon>{s.icon}</NavIcon>
+              <span>{s.label}</span>
+              {badges[s.id] != null && <span className="nav-badge">{badges[s.id]}</span>}
+            </button>
+          ))}
+        </nav>
+        <div className="side-foot">
+          <div className="who">{session.user.email}</div>
+          <button className="nav-item" onClick={() => getSupabase().auth.signOut()}>
+            <NavIcon>
+              <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11" />
+            </NavIcon>
+            <span>Sign out</span>
           </button>
         </div>
-      </div>
+      </aside>
 
-      <SendNotification session={session} onSent={refresh} />
-      <UploadVideo onUploaded={refresh} />
+      <main className="dash-main">
+        <header className="page-head">
+          <h1>{current.title}</h1>
+          <p>{current.subtitle}</p>
+        </header>
 
-      <section className="panel">
-        <h2>Videos</h2>
-        <p className="sub">Newest first. Deleting removes the file and all of its hearts.</p>
-        {videos.length === 0 ? (
-          <p className="status">No videos uploaded yet.</p>
-        ) : (
-          <ul className="list">
-            {videos.map((v) => (
-              <VideoRow key={v.id} video={v} onChanged={refresh} />
-            ))}
-          </ul>
+        {section === "overview" && (
+          <>
+            <div className="stat-grid">
+              <StatCard label="Videos" value={videos.length} />
+              <StatCard label="Hearts" value={formatCount(totalLikes)} />
+              <StatCard
+                label="Push devices"
+                value={subscriberCount ?? "–"}
+                hint={activeCount !== null ? `${activeCount} opened the app this week` : undefined}
+              />
+              <StatCard label="Notifications sent" value={logs.length} />
+            </div>
+
+            <div className="quick-grid">
+              <button className="quick" onClick={() => go("notify")}>
+                <b>Send a notification</b>
+                <span>Reach every phone with Bopz installed.</span>
+              </button>
+              <button className="quick" onClick={() => go("videos")}>
+                <b>Upload a video</b>
+                <span>It goes straight to the top of the feed.</span>
+              </button>
+            </div>
+
+            <section className="panel">
+              <div className="panel-head">
+                <h2>Top videos</h2>
+                <button className="btn ghost" onClick={() => go("videos")}>
+                  View all
+                </button>
+              </div>
+              {topVideos.length === 0 ? (
+                <p className="empty">No videos yet.</p>
+              ) : (
+                <ul className="list">
+                  {topVideos.map((v) => (
+                    <li key={v.id}>
+                      {v.url ? (
+                        <video className="thumb sm" src={`${v.url}#t=0.5`} muted playsInline preload="metadata" />
+                      ) : (
+                        <div className="thumb sm" />
+                      )}
+                      <div className="grow">
+                        <div className="title">{v.title || "Untitled"}</div>
+                        <div className="meta">{new Date(v.created_at).toLocaleDateString()}</div>
+                      </div>
+                      <span className="chip">♥ {formatCount(v.likes_count)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
         )}
-      </section>
 
-      <section className="panel">
-        <h2>Sent notifications</h2>
-        {logs.length === 0 ? (
-          <p className="status">Nothing sent yet.</p>
-        ) : (
-          <ul className="list">
-            {logs.map((n) => (
-              <li key={n.id}>
-                <div className="grow">
-                  <div className="title">{n.title || n.body}</div>
-                  <div className="meta">
-                    {new Date(n.created_at).toLocaleString()} · {n.sent_count} delivered
-                    {n.failed_count ? ` · ${n.failed_count} failed` : ""}
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+        {section === "notify" && <SendNotification session={session} onSent={refreshLogs} />}
+
+        {section === "videos" && (
+          <>
+            <UploadVideo onUploaded={refresh} />
+            <section className="panel">
+              <div className="panel-head">
+                <h2>Library</h2>
+                <span className="muted">{videos.length} videos</span>
+              </div>
+              {videos.length === 0 ? (
+                <p className="empty">No videos uploaded yet.</p>
+              ) : (
+                <ul className="list">
+                  {videos.map((v) => (
+                    <VideoRow key={v.id} video={v} onChanged={refresh} />
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
         )}
-      </section>
-    </main>
+
+        {section === "history" && (
+          <section className="panel">
+            <div className="panel-head">
+              <h2>{logs.length} sent</h2>
+              <button
+                className="btn danger"
+                onClick={resetHistory}
+                disabled={resetting === "history" || logs.length === 0}
+              >
+                {resetting === "history" ? "Resetting…" : "Reset history"}
+              </button>
+            </div>
+            {logs.length === 0 ? (
+              <p className="empty">Nothing sent yet.</p>
+            ) : (
+              <ul className="list">
+                {logs.map((n) => (
+                  <li key={n.id}>
+                    <div className="grow">
+                      <div className="title">{n.title || n.body}</div>
+                      {n.title && n.body && <div className="meta">{n.body}</div>}
+                      <div className="meta">{new Date(n.created_at).toLocaleString()}</div>
+                    </div>
+                    <span className="chip">{n.sent_count} delivered</span>
+                    {n.failed_count > 0 && <span className="chip bad">{n.failed_count} failed</span>}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
+
+        {section === "devices" && (
+          <>
+            <div className="stat-grid">
+              <StatCard label="Push devices" value={subscriberCount ?? "–"} hint="Updates every 10 seconds" />
+              <StatCard label="Opened the app this week" value={activeCount ?? "–"} />
+            </div>
+            <section className="panel">
+              <div className="panel-head">
+                <h2>Reset count</h2>
+                <button className="btn danger" onClick={resetDevices} disabled={resetting === "devices"}>
+                  {resetting === "devices" ? "Resetting…" : "Reset to 0"}
+                </button>
+              </div>
+              <p className="sub" style={{ margin: 0 }}>
+                Starts the count from zero. Each phone is added back the moment its owner opens Bopz from the home
+                screen, so phones that deleted the app never come back. Until a phone is added back, it won&apos;t
+                receive notifications.
+              </p>
+            </section>
+          </>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function StatCard({ label, value, hint }: { label: string; value: React.ReactNode; hint?: string }) {
+  return (
+    <div className="stat-card">
+      <div className="label">{label}</div>
+      <div className="value">{value}</div>
+      {hint && <div className="hint">{hint}</div>}
+    </div>
   );
 }
 
@@ -361,27 +565,50 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
     }
   }
 
+  // Mirrors the server: a message without a title is sent as the title.
+  const previewTitle = title.trim() || body.trim();
+  const previewBody = title.trim() ? body.trim() : "";
+
   return (
-    <form className="panel" onSubmit={submit}>
-      <h2>Send notification</h2>
-      <p className="sub">Pops up on every device that installed the app and allowed notifications.</p>
-      <label className="field">
-        Title (optional)
-        <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
-      </label>
-      <label className="field">
-        Message
-        <textarea value={body} maxLength={500} onChange={(e) => setBody(e.target.value)} />
-      </label>
-      <label className="field">
-        Open path when tapped
-        <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/" />
-      </label>
-      <button className="btn accent" type="submit" disabled={busy || (!title.trim() && !body.trim())}>
-        {busy ? "Sending…" : "Send to all"}
-      </button>
-      {status && <p className={`status ${status.kind === "info" ? "" : status.kind}`}>{status.text}</p>}
-    </form>
+    <div className="two-col">
+      <form className="panel" onSubmit={submit}>
+        <label className="field">
+          Title (optional)
+          <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
+        </label>
+        <label className="field">
+          Message
+          <textarea value={body} maxLength={500} onChange={(e) => setBody(e.target.value)} />
+        </label>
+        <label className="field">
+          Open page when tapped
+          <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/" />
+        </label>
+        <button className="btn accent" type="submit" disabled={busy || (!title.trim() && !body.trim())}>
+          {busy ? "Sending…" : "Send to all"}
+        </button>
+        {status && <p className={`status ${status.kind === "info" ? "" : status.kind}`}>{status.text}</p>}
+      </form>
+
+      <div className="panel">
+        <div className="muted" style={{ marginBottom: 12, fontSize: 13 }}>
+          Preview
+        </div>
+        <div className="preview-screen">
+          <div className="preview-note">
+            <img src="/icons/96" alt="" />
+            <div className="grow">
+              <div className="preview-top">
+                <b>{previewTitle || "Your message"}</b>
+                <span>now</span>
+              </div>
+              <div className="preview-from">from Bopz</div>
+              {previewBody && <div className="preview-body">{previewBody}</div>}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
