@@ -30,7 +30,7 @@ export default function Feed({ userId }: { userId: string }) {
     try {
       const { data, error } = await supabase
         .from("videos")
-        .select("id,title,description,storage_path,likes_count,created_at")
+        .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
         .order("created_at", { ascending: false })
         .range(offset, offset + PAGE_SIZE - 1);
       if (error) throw error;

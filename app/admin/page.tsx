@@ -12,8 +12,23 @@ type AdminVideo = {
   storage_path: string;
   likes_count: number;
   created_at: string;
+  link_url: string | null;
+  link_label: string | null;
   url?: string;
 };
+
+function normalizeLink(input: string): string | null {
+  const raw = input.trim();
+  const withScheme = /^[a-z][a-z0-9+.-]*:/i.test(raw) ? raw : `https://${raw}`;
+  try {
+    const url = new URL(withScheme);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    if (!url.hostname.includes(".")) return null;
+    return url.href;
+  } catch {
+    return null;
+  }
+}
 
 type NotificationLog = {
   id: string;
@@ -142,7 +157,7 @@ function Dashboard({ session }: { session: Session }) {
     const [vids, notifs, subs] = await Promise.all([
       supabase
         .from("videos")
-        .select("id,title,description,storage_path,likes_count,created_at")
+        .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
         .order("created_at", { ascending: false })
         .limit(200),
       supabase
@@ -301,6 +316,8 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkLabel, setLinkLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [inputKey, setInputKey] = useState(0);
@@ -308,6 +325,23 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   async function submit(e: FormEvent) {
     e.preventDefault();
     if (!file) return;
+
+    let link: string | null = null;
+    if (linkUrl.trim()) {
+      link = normalizeLink(linkUrl);
+      if (!link) {
+        setStatus({ kind: "err", text: "That button link isn't a valid web address." });
+        return;
+      }
+      if (!linkLabel.trim()) {
+        setStatus({ kind: "err", text: "Enter the button text people will see." });
+        return;
+      }
+    } else if (linkLabel.trim()) {
+      setStatus({ kind: "err", text: "Enter the link the button should open." });
+      return;
+    }
+
     setBusy(true);
     setStatus({ kind: "info", text: `Uploading ${(file.size / 1024 / 1024).toFixed(1)} MB…` });
 
@@ -325,6 +359,8 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
         storage_path: path,
         title: title.trim() || null,
         description: description.trim() || null,
+        link_url: link,
+        link_label: link ? linkLabel.trim() : null,
       });
       if (insertError) {
         await supabase.storage.from(VIDEO_BUCKET).remove([path]);
@@ -335,6 +371,8 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
       setFile(null);
       setTitle("");
       setDescription("");
+      setLinkUrl("");
+      setLinkLabel("");
       setInputKey((k) => k + 1);
       onUploaded();
     } catch (err) {
@@ -365,6 +403,25 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
       <label className="field">
         Description (optional)
         <textarea value={description} maxLength={1000} onChange={(e) => setDescription(e.target.value)} />
+      </label>
+      <label className="field">
+        Button link (optional)
+        <input
+          type="url"
+          inputMode="url"
+          placeholder="https://example.com"
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+        />
+      </label>
+      <label className="field">
+        Button text
+        <input
+          placeholder="e.g. Shop now"
+          value={linkLabel}
+          maxLength={40}
+          onChange={(e) => setLinkLabel(e.target.value)}
+        />
       </label>
       <button className="btn accent" type="submit" disabled={busy || !file}>
         {busy ? "Uploading…" : "Upload"}
@@ -403,6 +460,14 @@ function VideoRow({ video, onDeleted }: { video: AdminVideo; onDeleted: () => vo
         <div className="meta">
           {formatCount(video.likes_count)} hearts · {new Date(video.created_at).toLocaleDateString()}
         </div>
+        {video.link_url && (
+          <div className="meta">
+            Button: “{video.link_label}” →{" "}
+            <a href={video.link_url} target="_blank" rel="noopener noreferrer" style={{ color: "inherit" }}>
+              {video.link_url}
+            </a>
+          </div>
+        )}
       </div>
       <button className="btn danger" onClick={remove} disabled={busy}>
         {busy ? "…" : "Delete"}

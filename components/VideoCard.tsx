@@ -11,6 +11,8 @@ export type FeedVideo = {
   storage_path: string;
   likes_count: number;
   created_at: string;
+  link_url: string | null;
+  link_label: string | null;
   url: string | null;
 };
 
@@ -124,14 +126,18 @@ export default function VideoCard({ video, index, active, near, muted, liked, on
 
       {paused && <PlayIcon className="paused-icon" />}
 
-      {(video.title || video.description) && (
-        <>
-          <div className="shade" />
-          <div className="caption">
-            {video.title && <h2>{video.title}</h2>}
-            {video.description && <p>{video.description}</p>}
-          </div>
-        </>
+      {(video.title || video.description) && <div className="shade" />}
+
+      {(video.title || video.description || video.link_url) && (
+        <div className="caption">
+          {video.title && <h2>{video.title}</h2>}
+          {video.description && <p>{video.description}</p>}
+          {video.link_url && (
+            <a className="cta" href={video.link_url} target="_blank" rel="noopener noreferrer">
+              {video.link_label || "Open"}
+            </a>
+          )}
+        </div>
       )}
 
       <div className="rail">

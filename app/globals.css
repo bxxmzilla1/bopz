@@ -240,6 +240,30 @@ button {
   overflow: hidden;
 }
 
+.cta {
+  pointer-events: auto;
+  display: inline-block;
+  margin-top: 12px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #fff;
+  text-decoration: none;
+  text-shadow: none;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: transform 0.15s ease;
+}
+
+.cta:active {
+  transform: scale(0.96);
+}
+
 .rail {
   position: absolute;
   right: 10px;
