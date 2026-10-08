@@ -63,7 +63,16 @@ function HeartsField({ label, value, onChange }: { label: string; value: string;
   return (
     <label className="field">
       {label}
-      <input type="number" inputMode="numeric" min={0} max={MAX_HEARTS} step={1} value={value} onChange={(e) => onChange(e.target.value)} />
+      <input
+        type="number"
+        inputMode="numeric"
+        min={0}
+        max={MAX_HEARTS}
+        step={1}
+        placeholder="e.g. 12000"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </label>
   );
 }
@@ -896,7 +905,7 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
-  const [hearts, setHearts] = useState("0");
+  const [hearts, setHearts] = useState("");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [inputKey, setInputKey] = useState(0);
@@ -958,7 +967,7 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
       setFile(null);
       setLinkUrl("");
       setLinkLabel("");
-      setHearts("0");
+      setHearts("");
       setInputKey((k) => k + 1);
       onUploaded();
     } catch (err) {
