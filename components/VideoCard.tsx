@@ -124,13 +124,14 @@ export default function VideoCard({ video, index, active, near, muted, liked, on
 
       {paused && <PlayIcon className="paused-icon" />}
 
-      <div className="shade" />
-
       {(video.title || video.description) && (
-        <div className="caption">
-          {video.title && <h2>{video.title}</h2>}
-          {video.description && <p>{video.description}</p>}
-        </div>
+        <>
+          <div className="shade" />
+          <div className="caption">
+            {video.title && <h2>{video.title}</h2>}
+            {video.description && <p>{video.description}</p>}
+          </div>
+        </>
       )}
 
       <div className="rail">

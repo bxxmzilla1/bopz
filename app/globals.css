@@ -8,6 +8,7 @@
   --border: rgba(255, 255, 255, 0.12);
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --vh: var(--app-height, 100dvh);
 }
 
 * {
@@ -34,7 +35,7 @@ button {
 /* ---------- Shared ---------- */
 
 .screen {
-  min-height: 100dvh;
+  min-height: var(--vh);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -162,7 +163,10 @@ button {
 
 .feed {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--vh);
   overflow-y: scroll;
   scroll-snap-type: y mandatory;
   scrollbar-width: none;
@@ -175,7 +179,7 @@ button {
 
 .slide {
   position: relative;
-  height: 100dvh;
+  height: var(--vh);
   width: 100%;
   scroll-snap-align: start;
   scroll-snap-stop: always;
@@ -205,8 +209,9 @@ button {
   left: 0;
   right: 0;
   bottom: 0;
-  height: 40%;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.7), transparent);
+  height: 18%;
+  max-height: 160px;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.45), transparent);
   pointer-events: none;
 }
 
@@ -370,7 +375,7 @@ button {
 }
 
 .feed-empty {
-  height: 100dvh;
+  height: var(--vh);
   display: flex;
   flex-direction: column;
   align-items: center;
