@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState, type FormEvent } from "react";
 import type { Session } from "@supabase/supabase-js";
 import { getSupabase, VIDEO_BUCKET } from "@/lib/supabase";
 import { formatCount } from "@/lib/device";
+import { COUNTRY_CODES, countryFlag, countryName } from "@/lib/countries";
 
 type AdminVideo = {
   id: string;
@@ -181,7 +182,7 @@ function Login() {
   );
 }
 
-type Section = "overview" | "notify" | "upload" | "library" | "history";
+type Section = "overview" | "notify" | "upload" | "library" | "history" | "devices" | "countries";
 
 const SECTIONS: { id: Section; label: string; title: string; subtitle: string; icon: React.ReactNode }[] = [
   {
@@ -218,6 +219,20 @@ const SECTIONS: { id: Section; label: string; title: string; subtitle: string; i
     title: "Notification history",
     subtitle: "Everything you've sent and how many phones got it.",
     icon: <path d="M12 7v5l3 2M21 12a9 9 0 1 1-3-6.7M21 4v5h-5" />,
+  },
+  {
+    id: "devices",
+    label: "Device locations",
+    title: "Device locations",
+    subtitle: "IP address and location of every phone with notifications on.",
+    icon: <path d="M12 21s-7-6.1-7-11.5A7 7 0 0 1 19 9.5C19 14.9 12 21 12 21zm0-9a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z" />,
+  },
+  {
+    id: "countries",
+    label: "Allowed countries",
+    title: "Allowed countries",
+    subtitle: "Choose which countries can open Bopz.",
+    icon: <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3.6 9h16.8M3.6 15h16.8M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />,
   },
 ];
 
@@ -343,6 +358,7 @@ function Dashboard({ session }: { session: Session }) {
   const badges: Partial<Record<Section, number | null>> = {
     library: videos.length,
     history: logs.length,
+    devices: subscriberCount,
   };
   const isResetting = (t: ResetTarget) => resetting.includes(t);
 
@@ -439,6 +455,10 @@ function Dashboard({ session }: { session: Session }) {
 
         {section === "library" && <VideoLibrary videos={videos} onChanged={refreshVideos} />}
 
+        {section === "devices" && <DeviceLocations />}
+
+        {section === "countries" && <AllowedCountries />}
+
         {section === "history" && (
           <section className="panel">
             <div className="panel-head">
@@ -501,6 +521,260 @@ function StatCard({
       <div className="value">{value}</div>
       {hint && <div className="hint">{hint}</div>}
     </div>
+  );
+}
+
+type DeviceRow = {
+  id: string;
+  ip: string | null;
+  city: string | null;
+  region: string | null;
+  country: string | null;
+  user_agent: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function deviceName(ua: string | null): string {
+  if (!ua) return "Unknown";
+  if (/iPhone/.test(ua)) return "iPhone";
+  if (/iPad/.test(ua)) return "iPad";
+  if (/Android/.test(ua)) return "Android";
+  if (/Macintosh/.test(ua)) return "Mac";
+  if (/Windows/.test(ua)) return "Windows";
+  return "Other";
+}
+
+function timeAgo(iso: string): string {
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
+
+function DeviceLocations() {
+  const [rows, setRows] = useState<DeviceRow[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await getSupabase()
+      .from("push_subscriptions")
+      .select("id,ip,city,region,country,user_agent,created_at,updated_at")
+      .order("updated_at", { ascending: false })
+      .limit(1000);
+    if (error) {
+      setError(
+        /column/i.test(error.message)
+          ? "The database isn't set up to store locations yet. Run the device location SQL in Supabase."
+          : error.message
+      );
+      setRows([]);
+      return;
+    }
+    setError(null);
+    setRows((data ?? []) as DeviceRow[]);
+  }, []);
+
+  useEffect(() => {
+    load();
+    const id = window.setInterval(() => document.visibilityState === "visible" && load(), 10_000);
+    return () => window.clearInterval(id);
+  }, [load]);
+
+  if (rows === null) {
+    return (
+      <section className="panel">
+        <p className="empty">Loading…</p>
+      </section>
+    );
+  }
+
+  const byCountry = new Map<string, number>();
+  rows.forEach((r) => byCountry.set(r.country ?? "", (byCountry.get(r.country ?? "") ?? 0) + 1));
+  const summary = [...byCountry.entries()].sort((a, b) => b[1] - a[1]);
+
+  return (
+    <>
+      {error && <p className="status err" style={{ marginTop: 0 }}>{error}</p>}
+
+      {summary.length > 0 && (
+        <section className="panel">
+          <div className="panel-head">
+            <h2>By country</h2>
+          </div>
+          <div className="country-list">
+            {summary.map(([code, count]) => (
+              <span key={code || "unknown"} className="country-chip">
+                {code ? `${countryFlag(code)} ${countryName(code)}` : "Location pending"}
+                <b>{count}</b>
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="panel">
+        <div className="panel-head">
+          <h2>{rows.length} devices</h2>
+          <span className="muted">Updates every 10 seconds</span>
+        </div>
+        {rows.length === 0 ? (
+          <p className="empty">No devices yet.</p>
+        ) : (
+          <div className="table-wrap">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Location</th>
+                  <th>IP address</th>
+                  <th>Device</th>
+                  <th>Last seen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.id}>
+                    <td>
+                      {r.country ? (
+                        <>
+                          <span className="flag">{countryFlag(r.country)}</span>
+                          {[r.city, r.region].filter(Boolean).join(", ") || countryName(r.country)}
+                          <div className="sub-cell">{countryName(r.country)}</div>
+                        </>
+                      ) : (
+                        <span className="muted">Pending until the app is opened</span>
+                      )}
+                    </td>
+                    <td className="mono">{r.ip ?? "–"}</td>
+                    <td>{deviceName(r.user_agent)}</td>
+                    <td title={new Date(r.updated_at).toLocaleString()}>{timeAgo(r.updated_at)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
+function AllowedCountries() {
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [pick, setPick] = useState("");
+  const [mine, setMine] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    const { data, error } = await getSupabase().from("allowed_countries").select("code");
+    if (error) {
+      setError(
+        /allowed_countries/i.test(error.message)
+          ? "The database isn't set up for country rules yet. Run the allowed countries SQL in Supabase."
+          : error.message
+      );
+      setCodes([]);
+      return;
+    }
+    setError(null);
+    setCodes((data ?? []).map((r) => r.code as string));
+  }, []);
+
+  useEffect(() => {
+    load();
+    fetch("/api/admin/whereami")
+      .then((r) => r.json())
+      .then((j) => setMine(j.country ?? null))
+      .catch(() => {});
+  }, [load]);
+
+  async function add(code: string) {
+    if (!code) return;
+    setBusy(true);
+    const { error } = await getSupabase().from("allowed_countries").insert({ code });
+    if (error && error.code !== "23505") setError(error.message);
+    setPick("");
+    await load();
+    setBusy(false);
+  }
+
+  async function remove(code: string) {
+    setBusy(true);
+    const { error } = await getSupabase().from("allowed_countries").delete().eq("code", code);
+    if (error) setError(error.message);
+    await load();
+    setBusy(false);
+  }
+
+  if (codes === null) {
+    return (
+      <section className="panel">
+        <p className="empty">Loading…</p>
+      </section>
+    );
+  }
+
+  const sorted = [...codes].sort((a, b) => countryName(a).localeCompare(countryName(b)));
+  const options = COUNTRY_CODES.filter((c) => !codes.includes(c)).sort((a, b) =>
+    countryName(a).localeCompare(countryName(b))
+  );
+
+  return (
+    <>
+      {error && <p className="status err" style={{ marginTop: 0 }}>{error}</p>}
+
+      <section className="panel">
+        <div className="panel-head">
+          <h2>{codes.length === 0 ? "Open to everyone" : `${codes.length} allowed ${codes.length === 1 ? "country" : "countries"}`}</h2>
+        </div>
+        <p className="sub">
+          {codes.length === 0
+            ? "Anyone in any country can open Bopz. Add a country to allow only the countries on this list."
+            : "Only visitors in these countries can open Bopz. Everyone else sees a “Not available in your country” page. The admin dashboard always works."}
+        </p>
+
+        {mine && codes.length > 0 && !codes.includes(mine) && (
+          <p className="warn">
+            You&apos;re in {countryFlag(mine)} {countryName(mine)}, which isn&apos;t on the list, so you can&apos;t open the
+            app from here.
+          </p>
+        )}
+
+        <div className="add-row">
+          <select value={pick} onChange={(e) => setPick(e.target.value)} disabled={busy}>
+            <option value="">Choose a country…</option>
+            {options.map((c) => (
+              <option key={c} value={c}>
+                {countryFlag(c)} {countryName(c)}
+              </option>
+            ))}
+          </select>
+          <button className="btn accent" onClick={() => add(pick)} disabled={busy || !pick}>
+            Add
+          </button>
+          {mine && !codes.includes(mine) && (
+            <button className="btn" onClick={() => add(mine)} disabled={busy}>
+              Add my country ({countryFlag(mine)} {countryName(mine)})
+            </button>
+          )}
+        </div>
+
+        {sorted.length > 0 && (
+          <div className="country-list" style={{ marginTop: 18 }}>
+            {sorted.map((c) => (
+              <span key={c} className="country-chip">
+                {countryFlag(c)} {countryName(c)}
+                <button onClick={() => remove(c)} disabled={busy} aria-label={`Remove ${countryName(c)}`}>
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+      </section>
+    </>
   );
 }
 

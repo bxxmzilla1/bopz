@@ -51,29 +51,24 @@ export async function subscribeToPush(): Promise<boolean> {
   const json = subscription.toJSON();
   if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false;
 
-  const supabase = getSupabase();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return false;
+  const { data } = await getSupabase().auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) return false;
 
-  const { error } = await supabase.from("push_subscriptions").upsert(
-    {
-      user_id: auth.user.id,
+  const res = await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+    body: JSON.stringify({
       endpoint: json.endpoint,
       p256dh: json.keys.p256dh,
       auth: json.keys.auth,
       user_agent: navigator.userAgent,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "endpoint" }
-  );
-  if (error) {
-    console.warn("Saving push subscription failed", error);
+    }),
+  });
+  if (!res.ok) {
+    console.warn("Saving push subscription failed", res.status);
     return false;
   }
-
-  // An anonymous account lives in a single installed app, so any other endpoint
-  // belonging to this user is an outdated subscription from the same device.
-  await supabase.from("push_subscriptions").delete().eq("user_id", auth.user.id).neq("endpoint", json.endpoint);
   return true;
 }
 
