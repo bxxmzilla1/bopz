@@ -5,81 +5,126 @@ import { getSupabase, VIDEO_BUCKET } from "@/lib/supabase";
 import { pushSupported, subscribeToPush } from "@/lib/push";
 import VideoCard, { type FeedVideo } from "./VideoCard";
 
-const PAGE_SIZE = 8;
+const CATALOG_LIMIT = 1000;
+const SIGN_BATCH = 100;
 const SIGNED_URL_TTL = 60 * 60 * 6;
+// Coming back after this long counts as a new visit and rebuilds the feed.
+const NEW_VISIT_AFTER_MS = 30 * 60 * 1000;
+
+type Entry = { key: string; id: string };
+
+function shuffle<T>(items: T[]): T[] {
+  const a = [...items];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+const seenKey = (userId: string) => `bopz-seen-${userId}`;
+
+function loadSeen(userId: string): Set<string> {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(seenKey(userId)) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveSeen(userId: string, seen: Set<string>) {
+  try {
+    localStorage.setItem(seenKey(userId), JSON.stringify([...seen]));
+  } catch {
+    // Storage full or unavailable; the feed still works, it just can't remember.
+  }
+}
 
 export default function Feed({ userId }: { userId: string }) {
-  const [videos, setVideos] = useState<FeedVideo[]>([]);
+  const [byId, setById] = useState<Record<string, FeedVideo>>({});
+  const [queue, setQueue] = useState<Entry[]>([]);
   const [liked, setLiked] = useState<Set<string>>(new Set());
   const [active, setActive] = useState(0);
   const [muted, setMuted] = useState(true);
   const [loading, setLoading] = useState(true);
-  const [hasMore, setHasMore] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const fetching = useRef(false);
-  const pendingLikes = useRef<Set<string>>(new Set());
 
-  const loadPage = useCallback(async (offset: number) => {
-    if (fetching.current) return;
-    fetching.current = true;
+  const containerRef = useRef<HTMLDivElement>(null);
+  const pendingLikes = useRef<Set<string>>(new Set());
+  const seen = useRef<Set<string>>(new Set());
+  const pass = useRef(0);
+  const appendedAt = useRef(-1);
+  const loadingRef = useRef(false);
+
+  const load = useCallback(async () => {
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     const supabase = getSupabase();
     try {
       const { data, error } = await supabase
         .from("videos")
         .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
         .order("created_at", { ascending: false })
-        .range(offset, offset + PAGE_SIZE - 1);
+        .limit(CATALOG_LIMIT);
       if (error) throw error;
-
       const rows = data ?? [];
-      setHasMore(rows.length === PAGE_SIZE);
-      if (rows.length === 0) return;
 
-      const [signed, likes] = await Promise.all([
-        supabase.storage.from(VIDEO_BUCKET).createSignedUrls(
-          rows.map((r) => r.storage_path),
+      const urls: (string | null)[] = [];
+      for (let i = 0; i < rows.length; i += SIGN_BATCH) {
+        const chunk = rows.slice(i, i + SIGN_BATCH);
+        const { data: signed } = await supabase.storage.from(VIDEO_BUCKET).createSignedUrls(
+          chunk.map((r) => r.storage_path),
           SIGNED_URL_TTL
-        ),
-        supabase
-          .from("likes")
-          .select("video_id")
-          .eq("user_id", userId)
-          .in(
-            "video_id",
-            rows.map((r) => r.id)
-          ),
-      ]);
-
-      const page: FeedVideo[] = rows.map((r, i) => ({
-        ...r,
-        url: signed.data?.[i]?.signedUrl ?? null,
-      }));
-
-      setVideos((prev) => {
-        const seen = new Set(prev.map((v) => v.id));
-        return [...prev, ...page.filter((v) => !seen.has(v.id))];
-      });
-      if (likes.data?.length) {
-        setLiked((prev) => {
-          const next = new Set(prev);
-          likes.data.forEach((l) => next.add(l.video_id));
-          return next;
-        });
+        );
+        chunk.forEach((_, j) => urls.push(signed?.[j]?.signedUrl ?? null));
       }
+
+      const { data: likes } = await supabase.from("likes").select("video_id").eq("user_id", userId);
+
+      const map: Record<string, FeedVideo> = {};
+      rows.forEach((r, i) => (map[r.id] = { ...r, url: urls[i] }));
+
+      // Forget deleted videos so the seen list doesn't grow forever.
+      const remembered = loadSeen(userId);
+      seen.current = new Set([...remembered].filter((id) => map[id]));
+      saveSeen(userId, seen.current);
+
+      const unseen = rows.map((r) => r.id).filter((id) => !seen.current.has(id));
+      const first = unseen.length ? unseen : shuffle(rows.map((r) => r.id));
+
+      pass.current = 0;
+      appendedAt.current = -1;
+      setById(map);
+      setLiked(new Set((likes ?? []).map((l) => l.video_id)));
+      setQueue(first.map((id) => ({ key: `0-${id}`, id })));
+      setActive(0);
+      containerRef.current?.scrollTo({ top: 0 });
       setError(null);
     } catch (err) {
       console.error(err);
-      setError("Couldn't load videos. Pull down or reopen the app to retry.");
+      setError("Couldn't load videos. Close and reopen the app to retry.");
     } finally {
-      fetching.current = false;
+      loadingRef.current = false;
       setLoading(false);
     }
   }, [userId]);
 
   useEffect(() => {
-    loadPage(0);
-  }, [loadPage]);
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    let hiddenAt = 0;
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") {
+        hiddenAt = Date.now();
+      } else if (hiddenAt && Date.now() - hiddenAt > NEW_VISIT_AFTER_MS) {
+        load();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [load]);
 
   // Re-saving the subscription doubles as a "last seen" heartbeat for the admin's device count.
   useEffect(() => {
@@ -111,13 +156,30 @@ export default function Feed({ userId }: { userId: string }) {
     );
     root.querySelectorAll("[data-index]").forEach((el) => observer.observe(el));
     return () => observer.disconnect();
-  }, [videos.length]);
+  }, [queue.length]);
 
   useEffect(() => {
-    if (hasMore && videos.length > 0 && active >= videos.length - 3) {
-      loadPage(videos.length);
+    const id = queue[active]?.id;
+    if (id && !seen.current.has(id)) {
+      seen.current.add(id);
+      saveSeen(userId, seen.current);
     }
-  }, [active, videos.length, hasMore, loadPage]);
+  }, [active, queue, userId]);
+
+  // Near the end, append another full pass of every video in a fresh random order.
+  useEffect(() => {
+    const ids = Object.keys(byId);
+    if (!ids.length || active < queue.length - 3 || appendedAt.current === queue.length) return;
+    appendedAt.current = queue.length;
+
+    const next = shuffle(ids);
+    const lastId = queue[queue.length - 1]?.id;
+    if (next.length > 1 && next[0] === lastId) [next[0], next[1]] = [next[1], next[0]];
+
+    pass.current += 1;
+    const p = pass.current;
+    setQueue((q) => [...q, ...next.map((id) => ({ key: `${p}-${id}`, id }))]);
+  }, [active, queue, byId]);
 
   function applyLike(id: string, value: boolean) {
     setLiked((prev) => {
@@ -126,8 +188,8 @@ export default function Feed({ userId }: { userId: string }) {
       else next.delete(id);
       return next;
     });
-    setVideos((prev) =>
-      prev.map((v) => (v.id === id ? { ...v, likes_count: Math.max(0, v.likes_count + (value ? 1 : -1)) } : v))
+    setById((prev) =>
+      prev[id] ? { ...prev, [id]: { ...prev[id], likes_count: Math.max(0, prev[id].likes_count + (value ? 1 : -1)) } } : prev
     );
   }
 
@@ -160,26 +222,30 @@ export default function Feed({ userId }: { userId: string }) {
           <div className="feed-empty">
             <div className="spinner" />
           </div>
-        ) : videos.length === 0 ? (
+        ) : queue.length === 0 ? (
           <div className="feed-empty">
             <b style={{ color: "#fff", fontSize: 18 }}>{error ? "Something went wrong" : "No videos yet"}</b>
             <span>{error ?? "Check back soon. We'll notify you when something new drops."}</span>
           </div>
         ) : (
-          videos.map((video, i) => (
-            <VideoCard
-              key={video.id}
-              video={video}
-              index={i}
-              active={i === active}
-              near={Math.abs(i - active) <= 2}
-              muted={muted}
-              liked={liked.has(video.id)}
-              onMutedChange={setMuted}
-              onToggleLike={() => setLike(video.id, !liked.has(video.id))}
-              onLike={() => setLike(video.id, true)}
-            />
-          ))
+          queue.map((entry, i) => {
+            const video = byId[entry.id];
+            if (!video) return null;
+            return (
+              <VideoCard
+                key={entry.key}
+                video={video}
+                index={i}
+                active={i === active}
+                near={Math.abs(i - active) <= 2}
+                muted={muted}
+                liked={liked.has(video.id)}
+                onMutedChange={setMuted}
+                onToggleLike={() => setLike(video.id, !liked.has(video.id))}
+                onLike={() => setLike(video.id, true)}
+              />
+            );
+          })
         )}
       </div>
     </>
