@@ -66,7 +66,11 @@ export async function POST(req: Request) {
     .select("id")
     .single();
 
-  const payload = JSON.stringify({ title, body, url, tag: log?.id });
+  // iOS shows the app name when the title is empty, so a message-only notification
+  // uses the message as its title.
+  const payload = JSON.stringify(
+    title ? { title, body, url, tag: log?.id } : { title: body, body: "", url, tag: log?.id }
+  );
   let sent = 0;
   let failed = 0;
   const expired: string[] = [];
