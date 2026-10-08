@@ -5,7 +5,7 @@ import type { Session } from "@supabase/supabase-js";
 import { getSupabase, VIDEO_BUCKET } from "@/lib/supabase";
 import { formatCount } from "@/lib/device";
 import { COUNTRY_CODES, countryFlag, countryName } from "@/lib/countries";
-import { captureThumbnail, thumbPathFor, uploadThumbnail } from "@/lib/thumbnail";
+import { captureThumbnail, isCurrentThumb, thumbPathFor, uploadThumbnail } from "@/lib/thumbnail";
 
 type AdminVideo = {
   id: string;
@@ -1023,7 +1023,7 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
     (async () => {
       for (const v of shown) {
         if (cancelled || backfillBlocked.current) return;
-        if (v.thumb_url || !v.url || attempted.current.has(v.id)) continue;
+        if (isCurrentThumb(v.thumb_path) || !v.url || attempted.current.has(v.id)) continue;
         attempted.current.add(v.id);
 
         const blob = await captureThumbnail(v.url, { crossOrigin: true });
@@ -1032,6 +1032,7 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
         if (!(await uploadThumbnail(path, blob))) continue;
         const { error } = await getSupabase().from("videos").update({ thumb_path: path }).eq("id", v.id);
         if (error) backfillBlocked.current = true;
+        else if (v.thumb_path) await getSupabase().storage.from(VIDEO_BUCKET).remove([v.thumb_path]);
         const objectUrl = URL.createObjectURL(blob);
         setLocalThumbs((t) => ({ ...t, [v.id]: objectUrl }));
       }
@@ -1057,7 +1058,7 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
           <VideoTile
             key={v.id}
             video={v}
-            thumbUrl={v.thumb_url ?? localThumbs[v.id]}
+            thumbUrl={localThumbs[v.id] ?? v.thumb_url}
             onPreview={() => setPreviewing(v)}
             onEdit={() => setEditing(v)}
             onDeleted={onChanged}
@@ -1086,7 +1087,7 @@ function VideoLibrary({ videos, onChanged }: { videos: AdminVideo[]; onChanged: 
           <video
             className="preview-video"
             src={previewing.url}
-            poster={previewing.thumb_url ?? localThumbs[previewing.id]}
+            poster={localThumbs[previewing.id] ?? previewing.thumb_url}
             controls
             autoPlay
             playsInline

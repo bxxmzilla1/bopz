@@ -62,15 +62,22 @@ export default function VideoCard({
     if (videoRef.current) videoRef.current.muted = muted;
   }, [muted]);
 
-  // "playing" can fire before a frame is painted (black flash on iOS), so wait for the frame itself.
+  // "playing" can fire before anything is painted (black flash on iOS), and the first frames can
+  // stutter while decoding warms up, so keep the thumbnail until a couple of frames have advanced.
   function handlePlaying() {
     const el = videoRef.current;
     if (!el || frameShown) return;
-    if ("requestVideoFrameCallback" in el) {
-      el.requestVideoFrameCallback(() => setFrameShown(true));
-    } else {
+    if (!("requestVideoFrameCallback" in el)) {
       setFrameShown(true);
+      return;
     }
+    let frames = 0;
+    const onFrame = () => {
+      frames += 1;
+      if (frames >= 2) setFrameShown(true);
+      else el.requestVideoFrameCallback(onFrame);
+    };
+    el.requestVideoFrameCallback(onFrame);
   }
 
   useEffect(() => {
@@ -82,6 +89,7 @@ export default function VideoCard({
     }
     el.muted = muted;
     setPaused(false);
+    if (!frameShown && el.currentTime > 0) el.currentTime = 0;
     el.play().catch(() => {
       // Browsers block unmuted autoplay without a recent tap; fall back to muted.
       el.muted = true;

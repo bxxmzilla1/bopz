@@ -210,7 +210,7 @@ button {
   height: 100%;
   object-fit: cover;
   pointer-events: none;
-  transition: opacity 0.12s ease;
+  transition: opacity 0.08s linear;
 }
 
 .slide-thumb.hidden {

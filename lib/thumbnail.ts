@@ -1,6 +1,6 @@
 import { getSupabase, VIDEO_BUCKET } from "./supabase";
 
-/** Grabs a frame near the start of a video as a small JPEG. Returns null if the browser can't decode it. */
+/** Grabs the first frame of a video as a small JPEG so it matches where playback starts. Returns null if the browser can't decode it. */
 export function captureThumbnail(src: string, { crossOrigin = false, width = 360 } = {}): Promise<Blob | null> {
   return new Promise((resolve) => {
     const video = document.createElement("video");
@@ -20,7 +20,7 @@ export function captureThumbnail(src: string, { crossOrigin = false, width = 360
     video.playsInline = true;
     video.preload = "auto";
     video.onloadedmetadata = () => {
-      video.currentTime = Math.min(0.5, (video.duration || 1) / 2);
+      video.currentTime = 0.001;
     };
     video.onseeked = () => {
       const ratio = video.videoWidth ? video.videoHeight / video.videoWidth : 16 / 9;
@@ -49,4 +49,6 @@ export async function uploadThumbnail(path: string, blob: Blob): Promise<boolean
   return !error;
 }
 
-export const thumbPathFor = (videoPath: string) => `thumbs/${videoPath.replace(/\.[^.]+$/, "")}.jpg`;
+// The "_f0" suffix marks first-frame thumbnails; older mid-video ones get regenerated.
+export const thumbPathFor = (videoPath: string) => `thumbs/${videoPath.replace(/\.[^.]+$/, "")}_f0.jpg`;
+export const isCurrentThumb = (thumbPath?: string | null) => !!thumbPath && thumbPath.endsWith("_f0.jpg");
