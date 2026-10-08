@@ -56,10 +56,10 @@ export async function POST(req: Request) {
     .select("id")
     .single();
 
-  // iOS substitutes the app name for an empty title, so a message-only notification gets an
-  // invisible zero-width title; iOS then shows "from Bopz" first with the message under it.
+  // iOS shows the app name when the title is empty, so a message-only notification
+  // uses the message as its title.
   const payload = JSON.stringify(
-    title ? { title, body, url, tag: log?.id } : { title: "\u200B", body, url, tag: log?.id }
+    title ? { title, body, url, tag: log?.id } : { title: body, body: "", url, tag: log?.id }
   );
   let sent = 0;
   let failed = 0;

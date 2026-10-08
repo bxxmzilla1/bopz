@@ -834,7 +834,6 @@ function AllowedCountries() {
 
 function SendNotification({ session, onSent }: { session: Session; onSent: () => void }) {
   const [title, setTitle] = useState("");
-  const [body, setBody] = useState("");
   const [url, setUrl] = useState("/");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
@@ -849,7 +848,7 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
       const res = await fetch("/api/admin/notify", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ title, body, url }),
+        body: JSON.stringify({ title, url }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Failed to send");
@@ -858,7 +857,6 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
         text: `Delivered to ${json.sent} of ${json.total} devices${json.removed ? ` (${json.removed} expired removed)` : ""}.`,
       });
       setTitle("");
-      setBody("");
       onSent();
     } catch (err) {
       setStatus({ kind: "err", text: (err as Error).message });
@@ -867,26 +865,18 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
     }
   }
 
-  // Mirrors the server: a message without a title gets an invisible title, so "from Bopz" leads.
-  const previewTitle = title.trim();
-  const previewBody = body.trim();
-
   return (
     <div className="two-col">
       <form className="panel" onSubmit={submit}>
         <label className="field">
-          Title (optional)
+          Title
           <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
-        </label>
-        <label className="field">
-          Message
-          <textarea value={body} maxLength={500} onChange={(e) => setBody(e.target.value)} />
         </label>
         <label className="field">
           Open page when tapped
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/" />
         </label>
-        <button className="btn accent" type="submit" disabled={busy || (!title.trim() && !body.trim())}>
+        <button className="btn accent" type="submit" disabled={busy || !title.trim()}>
           {busy ? "Sending…" : "Send to all"}
         </button>
         {status && <p className={`status ${status.kind === "info" ? "" : status.kind}`}>{status.text}</p>}
@@ -900,21 +890,11 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
           <div className="preview-note">
             <img src="/icons/96" alt="" />
             <div className="grow">
-              {previewTitle ? (
-                <>
-                  <div className="preview-top">
-                    <b>{previewTitle}</b>
-                    <span>now</span>
-                  </div>
-                  <div className="preview-from">from Bopz</div>
-                </>
-              ) : (
-                <div className="preview-top">
-                  <span className="preview-from">from Bopz</span>
-                  <span>now</span>
-                </div>
-              )}
-              <div className="preview-body">{previewBody || (previewTitle ? "" : "Your message")}</div>
+              <div className="preview-top">
+                <b>{title.trim() || "Your title"}</b>
+                <span>now</span>
+              </div>
+              <div className="preview-from">from Bopz</div>
             </div>
           </div>
         </div>
