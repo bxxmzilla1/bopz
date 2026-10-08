@@ -867,9 +867,9 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
     }
   }
 
-  // Mirrors the server: a message without a title is sent as the title.
-  const previewTitle = title.trim() || body.trim();
-  const previewBody = title.trim() ? body.trim() : "";
+  // Mirrors the server: a message without a title gets an invisible title, so "from Bopz" leads.
+  const previewTitle = title.trim();
+  const previewBody = body.trim();
 
   return (
     <div className="two-col">
@@ -900,12 +900,21 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
           <div className="preview-note">
             <img src="/icons/96" alt="" />
             <div className="grow">
-              <div className="preview-top">
-                <b>{previewTitle || "Your message"}</b>
-                <span>now</span>
-              </div>
-              <div className="preview-from">from Bopz</div>
-              {previewBody && <div className="preview-body">{previewBody}</div>}
+              {previewTitle ? (
+                <>
+                  <div className="preview-top">
+                    <b>{previewTitle}</b>
+                    <span>now</span>
+                  </div>
+                  <div className="preview-from">from Bopz</div>
+                </>
+              ) : (
+                <div className="preview-top">
+                  <span className="preview-from">from Bopz</span>
+                  <span>now</span>
+                </div>
+              )}
+              <div className="preview-body">{previewBody || (previewTitle ? "" : "Your message")}</div>
             </div>
           </div>
         </div>
