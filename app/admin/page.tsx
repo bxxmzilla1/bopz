@@ -165,10 +165,33 @@ function Dashboard({ session }: { session: Session }) {
   const [videos, setVideos] = useState<AdminVideo[]>([]);
   const [logs, setLogs] = useState<NotificationLog[]>([]);
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
+  const [activeCount, setActiveCount] = useState<number | null>(null);
+
+  const refreshDevices = useCallback(async () => {
+    const supabase = getSupabase();
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const [all, active] = await Promise.all([
+      supabase.from("push_subscriptions").select("id", { count: "exact", head: true }),
+      supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).gte("updated_at", weekAgo),
+    ]);
+    if (all.count !== null) setSubscriberCount(all.count);
+    if (active.count !== null) setActiveCount(active.count);
+  }, []);
+
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") refreshDevices();
+    }, 10_000);
+    window.addEventListener("focus", refreshDevices);
+    return () => {
+      window.clearInterval(id);
+      window.removeEventListener("focus", refreshDevices);
+    };
+  }, [refreshDevices]);
 
   const refresh = useCallback(async () => {
     const supabase = getSupabase();
-    const [vids, notifs, subs] = await Promise.all([
+    const [vids, notifs] = await Promise.all([
       supabase
         .from("videos")
         .select("id,title,description,storage_path,likes_count,created_at,link_url,link_label")
@@ -179,7 +202,7 @@ function Dashboard({ session }: { session: Session }) {
         .select("id,title,body,sent_count,failed_count,created_at")
         .order("created_at", { ascending: false })
         .limit(20),
-      supabase.from("push_subscriptions").select("id", { count: "exact", head: true }),
+      refreshDevices(),
     ]);
 
     const rows = (vids.data ?? []) as AdminVideo[];
@@ -192,8 +215,7 @@ function Dashboard({ session }: { session: Session }) {
     }
     setVideos(rows);
     setLogs((notifs.data ?? []) as NotificationLog[]);
-    setSubscriberCount(subs.count ?? 0);
-  }, []);
+  }, [refreshDevices]);
 
   useEffect(() => {
     refresh();
@@ -222,6 +244,9 @@ function Dashboard({ session }: { session: Session }) {
         <div className="stat">
           <b>{subscriberCount ?? "–"}</b>
           <span>Push devices</span>
+          {activeCount !== null && (
+            <span style={{ display: "block", fontSize: 12, marginTop: 2 }}>{activeCount} opened the app this week</span>
+          )}
         </div>
       </div>
 

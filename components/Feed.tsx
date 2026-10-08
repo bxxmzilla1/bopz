@@ -81,10 +81,19 @@ export default function Feed({ userId }: { userId: string }) {
     loadPage(0);
   }, [loadPage]);
 
+  // Re-saving the subscription doubles as a "last seen" heartbeat for the admin's device count.
   useEffect(() => {
-    if (pushSupported() && Notification.permission === "granted") {
-      subscribeToPush().catch(() => {});
-    }
+    let last = 0;
+    const sync = () => {
+      if (document.visibilityState !== "visible" || Date.now() - last < 10 * 60 * 1000) return;
+      if (pushSupported() && Notification.permission === "granted") {
+        last = Date.now();
+        subscribeToPush().catch(() => {});
+      }
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
   }, []);
 
   useEffect(() => {

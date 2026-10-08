@@ -70,5 +70,17 @@ export async function subscribeToPush(): Promise<boolean> {
     console.warn("Saving push subscription failed", error);
     return false;
   }
+
+  // An anonymous account lives in a single installed app, so any other endpoint
+  // belonging to this user is an outdated subscription from the same device.
+  await supabase.from("push_subscriptions").delete().eq("user_id", auth.user.id).neq("endpoint", json.endpoint);
   return true;
+}
+
+/** Removes this user's push subscriptions, e.g. after they turn notifications off. */
+export async function removeOwnSubscriptions(): Promise<void> {
+  const supabase = getSupabase();
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user) return;
+  await supabase.from("push_subscriptions").delete().eq("user_id", auth.user.id);
 }

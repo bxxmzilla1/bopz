@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { isStandalone } from "@/lib/device";
-import { pushSupported } from "@/lib/push";
+import { pushSupported, removeOwnSubscriptions } from "@/lib/push";
 import InstallGate from "@/components/InstallGate";
 import Onboarding from "@/components/Onboarding";
 import Feed from "@/components/Feed";
@@ -59,6 +59,12 @@ export default function Home() {
       if (status) status.onchange = null;
     };
   }, [refreshPermission]);
+
+  useEffect(() => {
+    if (userId && (permission === "denied" || permission === "unsupported")) {
+      removeOwnSubscriptions().catch(() => {});
+    }
+  }, [userId, permission]);
 
   if (standalone === null || (standalone && userId === undefined)) {
     return (
