@@ -44,6 +44,26 @@ function validateButton(
   return { link_url: link, link_label: label };
 }
 
+const MAX_HEARTS = 2_000_000_000;
+
+/** Parses the hearts input; returns null if it isn't a whole number in range. */
+function parseHearts(input: string): number | null {
+  const raw = input.trim().replace(/[,\s]/g, "");
+  if (raw === "") return 0;
+  if (!/^\d+$/.test(raw)) return null;
+  const n = Number(raw);
+  return n <= MAX_HEARTS ? n : null;
+}
+
+function HeartsField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="field">
+      {label}
+      <input type="number" inputMode="numeric" min={0} max={MAX_HEARTS} step={1} value={value} onChange={(e) => onChange(e.target.value)} />
+    </label>
+  );
+}
+
 type NotificationLog = {
   id: string;
   title: string;
@@ -306,12 +326,6 @@ function Dashboard({ session }: { session: Session }) {
   }
 
   async function resetDevices() {
-    if (
-      !confirm(
-        "Reset push devices to 0?\n\nEach device is added back automatically the next time its owner opens the app. Until then, it won't receive notifications."
-      )
-    )
-      return;
     setResetting("devices");
     try {
       await adminPost("/api/admin/reset-devices");
@@ -324,7 +338,6 @@ function Dashboard({ session }: { session: Session }) {
   }
 
   async function resetHistory() {
-    if (!confirm("Delete all notification history? This can't be undone.")) return;
     setResetting("history");
     try {
       await adminPost("/api/admin/reset-history");
@@ -338,7 +351,6 @@ function Dashboard({ session }: { session: Session }) {
 
   const totalLikes = videos.reduce((sum, v) => sum + v.likes_count, 0);
   const current = SECTIONS.find((s) => s.id === section)!;
-  const topVideos = [...videos].sort((a, b) => b.likes_count - a.likes_count).slice(0, 5);
   const badges: Partial<Record<Section, number | null>> = {
     videos: videos.length,
     history: logs.length,
@@ -406,35 +418,6 @@ function Dashboard({ session }: { session: Session }) {
                 <span>It goes straight to the top of the feed.</span>
               </button>
             </div>
-
-            <section className="panel">
-              <div className="panel-head">
-                <h2>Top videos</h2>
-                <button className="btn ghost" onClick={() => go("videos")}>
-                  View all
-                </button>
-              </div>
-              {topVideos.length === 0 ? (
-                <p className="empty">No videos yet.</p>
-              ) : (
-                <ul className="list">
-                  {topVideos.map((v) => (
-                    <li key={v.id}>
-                      {v.url ? (
-                        <video className="thumb sm" src={`${v.url}#t=0.5`} muted playsInline preload="metadata" />
-                      ) : (
-                        <div className="thumb sm" />
-                      )}
-                      <div className="grow">
-                        <div className="title">{v.title || "Untitled"}</div>
-                        <div className="meta">{new Date(v.created_at).toLocaleDateString()}</div>
-                      </div>
-                      <span className="chip">♥ {formatCount(v.likes_count)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
           </>
         )}
 
@@ -538,7 +521,6 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!confirm(`Send "${title.trim() || body.trim()}" to every subscribed device?`)) return;
     setBusy(true);
     setStatus({ kind: "info", text: "Sending…" });
     try {
@@ -618,6 +600,7 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
   const [description, setDescription] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [linkLabel, setLinkLabel] = useState("");
+  const [hearts, setHearts] = useState("0");
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
   const [inputKey, setInputKey] = useState(0);
@@ -629,6 +612,11 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
     const button = validateButton(linkUrl, linkLabel);
     if ("error" in button) {
       setStatus({ kind: "err", text: button.error });
+      return;
+    }
+    const likesCount = parseHearts(hearts);
+    if (likesCount === null) {
+      setStatus({ kind: "err", text: "Hearts must be a whole number of 0 or more." });
       return;
     }
 
@@ -651,6 +639,7 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
         description: description.trim() || null,
         link_url: button.link_url,
         link_label: button.link_label,
+        likes_count: likesCount,
       });
       if (insertError) {
         await supabase.storage.from(VIDEO_BUCKET).remove([path]);
@@ -663,6 +652,7 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
       setDescription("");
       setLinkUrl("");
       setLinkLabel("");
+      setHearts("0");
       setInputKey((k) => k + 1);
       onUploaded();
     } catch (err) {
@@ -713,6 +703,7 @@ function UploadVideo({ onUploaded }: { onUploaded: () => void }) {
           onChange={(e) => setLinkLabel(e.target.value)}
         />
       </label>
+      <HeartsField label="Starting hearts" value={hearts} onChange={setHearts} />
       <button className="btn accent" type="submit" disabled={busy || !file}>
         {busy ? "Uploading…" : "Upload"}
       </button>
@@ -726,7 +717,6 @@ function VideoRow({ video, onChanged }: { video: AdminVideo; onChanged: () => vo
   const [editing, setEditing] = useState(false);
 
   async function remove() {
-    if (!confirm(`Delete "${video.title || "this video"}"? This can't be undone.`)) return;
     setBusy(true);
     const supabase = getSupabase();
     const { error } = await supabase.from("videos").delete().eq("id", video.id);
@@ -786,6 +776,7 @@ function EditVideo({ video, onSaved }: { video: AdminVideo; onSaved: () => void 
   const [description, setDescription] = useState(video.description ?? "");
   const [linkUrl, setLinkUrl] = useState(video.link_url ?? "");
   const [linkLabel, setLinkLabel] = useState(video.link_label ?? "");
+  const [hearts, setHearts] = useState(String(video.likes_count));
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<Status>(null);
 
@@ -794,6 +785,11 @@ function EditVideo({ video, onSaved }: { video: AdminVideo; onSaved: () => void 
     const button = validateButton(linkUrl, linkLabel);
     if ("error" in button) {
       setStatus({ kind: "err", text: button.error });
+      return;
+    }
+    const likesCount = parseHearts(hearts);
+    if (likesCount === null) {
+      setStatus({ kind: "err", text: "Hearts must be a whole number of 0 or more." });
       return;
     }
 
@@ -806,6 +802,7 @@ function EditVideo({ video, onSaved }: { video: AdminVideo; onSaved: () => void 
         description: description.trim() || null,
         link_url: button.link_url,
         link_label: button.link_label,
+        likes_count: likesCount,
       })
       .eq("id", video.id);
     setBusy(false);
@@ -845,6 +842,7 @@ function EditVideo({ video, onSaved }: { video: AdminVideo; onSaved: () => void 
           onChange={(e) => setLinkLabel(e.target.value)}
         />
       </label>
+      <HeartsField label="Hearts" value={hearts} onChange={setHearts} />
       <button className="btn accent" type="submit" disabled={busy}>
         {busy ? "Saving…" : "Save changes"}
       </button>
