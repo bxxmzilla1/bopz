@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getSupabase } from "@/lib/supabase";
 import { pushSupported } from "@/lib/push";
 import { getPlatform, type Platform } from "@/lib/device";
+import { LandingScreen } from "./LandingBackground";
 
 type Props = {
   /** True when the visitor already has an account and only needs to turn notifications back on. */
@@ -54,7 +55,7 @@ export default function Onboarding({ hasAccount, permission, onPermissionChange 
 
   if (permission === "unsupported" || !pushSupported()) {
     return (
-      <main className="screen">
+      <LandingScreen>
         <img className="logo" src="/icons/192" alt="" />
         <h1>Update required</h1>
         <p className="lead">
@@ -63,13 +64,13 @@ export default function Onboarding({ hasAccount, permission, onPermissionChange 
             ? " Update your iPhone to iOS 16.4 or newer, then open Bopz from your home screen."
             : " Try a recent version of Chrome, Edge, Firefox, or Safari."}
         </p>
-      </main>
+      </LandingScreen>
     );
   }
 
   if (permission === "denied") {
     return (
-      <main className="screen">
+      <LandingScreen>
         <img className="logo" src="/icons/192" alt="" />
         <h1>Turn on notifications</h1>
         <p className="lead">Notifications are required to use Bopz. They&apos;re currently blocked.</p>
@@ -119,23 +120,23 @@ export default function Onboarding({ hasAccount, permission, onPermissionChange 
         <button className="btn-primary" onClick={onPermissionChange}>
           I turned them on
         </button>
-      </main>
+      </LandingScreen>
     );
   }
 
   return (
-    <main className="screen">
+    <LandingScreen>
       <img className="logo" src="/icons/192" alt="" />
       <h1>{hasAccount ? "Turn on notifications" : "Welcome to Bopz"}</h1>
       <p className="lead">
         {hasAccount
           ? "Notifications are required to keep watching. Tap below and choose Allow."
-          : "No email, no password. Tap below, choose Allow when asked about notifications, and you're in."}
+          : "To use Bopz, you must allow notifications. Without them, the app won't work. Tap below and choose Allow when asked."}
       </p>
       <button className="btn-primary" onClick={start} disabled={busy}>
         {busy ? "Setting things up…" : hasAccount ? "Turn On Notifications" : "Allow Notifications & Start"}
       </button>
       {error && <p className="error">{error}</p>}
-    </main>
+    </LandingScreen>
   );
 }

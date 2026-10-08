@@ -3,6 +3,32 @@
 import { useEffect, useRef, useState } from "react";
 
 export type LandingVideo = { url: string; poster?: string | null };
+type Background = { videos: LandingVideo[]; opacity: number };
+
+/** The background the admin picked in Settings, or null when none is set. */
+export function useLandingBackground(): Background | null {
+  const [background, setBackground] = useState<Background | null>(null);
+  useEffect(() => {
+    fetch("/api/landing")
+      .then((r) => r.json())
+      .then((data) => {
+        if (Array.isArray(data.videos) && data.videos.length) setBackground(data);
+      })
+      .catch(() => {});
+  }, []);
+  return background;
+}
+
+/** A full-screen `.screen` that shows the landing background behind its content when one is set. */
+export function LandingScreen({ children }: { children: React.ReactNode }) {
+  const background = useLandingBackground();
+  return (
+    <main className={background ? "screen landing" : "screen"}>
+      {background && <LandingBackground videos={background.videos} opacity={background.opacity} />}
+      {children}
+    </main>
+  );
+}
 
 /** Plays the videos one after another, forever, under a black overlay. */
 export default function LandingBackground({ videos, opacity }: { videos: LandingVideo[]; opacity: number }) {

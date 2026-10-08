@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { getPlatform, type Platform } from "@/lib/device";
 import { AddBoxIcon, MenuDotsIcon, ShareIcon } from "./Icons";
-import LandingBackground, { type LandingVideo } from "./LandingBackground";
+import { LandingScreen } from "./LandingBackground";
 
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>;
@@ -14,16 +14,6 @@ export default function InstallGate() {
   const [platform, setPlatform] = useState<Platform>("desktop");
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [installed, setInstalled] = useState(false);
-  const [background, setBackground] = useState<{ videos: LandingVideo[]; opacity: number } | null>(null);
-
-  useEffect(() => {
-    fetch("/api/landing")
-      .then((r) => r.json())
-      .then((data) => {
-        if (Array.isArray(data.videos) && data.videos.length) setBackground(data);
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     setPlatform(getPlatform());
@@ -53,8 +43,7 @@ export default function InstallGate() {
   }
 
   return (
-    <main className={background ? "screen landing" : "screen"}>
-      {background && <LandingBackground videos={background.videos} opacity={background.opacity} />}
+    <LandingScreen>
       <img className="logo" src="/icons/192" alt="" />
       <h1>Get Bopz</h1>
 
@@ -126,6 +115,6 @@ export default function InstallGate() {
           )}
         </>
       )}
-    </main>
+    </LandingScreen>
   );
 }
