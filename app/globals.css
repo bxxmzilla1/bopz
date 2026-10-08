@@ -158,6 +158,13 @@ button {
   height: 20px;
 }
 
+.step-note {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 .hint {
   color: var(--muted);
   font-size: 13px;

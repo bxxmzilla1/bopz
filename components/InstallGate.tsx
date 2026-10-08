@@ -73,6 +73,9 @@ export default function InstallGate() {
                   <span className="step-num">2</span>
                   <span>
                     Choose <b>Add to Home Screen</b> <AddBoxIcon className="inline-icon" />
+                    <span className="step-note">
+                      Don&apos;t see it? Tap <b>View More</b> at the bottom of the menu.
+                    </span>
                   </span>
                 </li>
                 <li>
@@ -82,7 +85,6 @@ export default function InstallGate() {
                   </span>
                 </li>
               </ol>
-              <p className="hint">Requires iOS 16.4 or newer for notifications.</p>
             </>
           ) : platform === "android" ? (
             <ol className="steps">
