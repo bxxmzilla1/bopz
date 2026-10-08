@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "vapid": "web-push generate-vapid-keys"
+    "vapid": "web-push generate-vapid-keys",
+    "create-admin": "node --env-file=.env.local scripts/create-admin.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.0",
