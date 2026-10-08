@@ -222,7 +222,7 @@ function Dashboard({ session }: { session: Session }) {
             {logs.map((n) => (
               <li key={n.id}>
                 <div className="grow">
-                  <div className="title">{n.title}</div>
+                  <div className="title">{n.title || n.body}</div>
                   <div className="meta">
                     {new Date(n.created_at).toLocaleString()} · {n.sent_count} delivered
                     {n.failed_count ? ` · ${n.failed_count} failed` : ""}
@@ -246,7 +246,7 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    if (!confirm(`Send "${title}" to every subscribed device?`)) return;
+    if (!confirm(`Send "${title.trim() || body.trim()}" to every subscribed device?`)) return;
     setBusy(true);
     setStatus({ kind: "info", text: "Sending…" });
     try {
@@ -278,8 +278,8 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
       <h2>Send notification</h2>
       <p className="sub">Pops up on every device that installed the app and allowed notifications.</p>
       <label className="field">
-        Title
-        <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} required />
+        Title (optional)
+        <input value={title} maxLength={120} onChange={(e) => setTitle(e.target.value)} />
       </label>
       <label className="field">
         Message
@@ -289,7 +289,7 @@ function SendNotification({ session, onSent }: { session: Session; onSent: () =>
         Open path when tapped
         <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="/" />
       </label>
-      <button className="btn accent" type="submit" disabled={busy || !title.trim()}>
+      <button className="btn accent" type="submit" disabled={busy || (!title.trim() && !body.trim())}>
         {busy ? "Sending…" : "Send to all"}
       </button>
       {status && <p className={`status ${status.kind === "info" ? "" : status.kind}`}>{status.text}</p>}

@@ -31,7 +31,7 @@ self.addEventListener("push", (event) => {
     }
   }
 
-  const title = data.title || "Bopz";
+  const title = typeof data.title === "string" ? data.title : "Bopz";
   event.waitUntil(
     self.registration.showNotification(title, {
       body: data.body || "",

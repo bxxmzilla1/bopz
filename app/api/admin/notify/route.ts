@@ -47,7 +47,7 @@ export async function POST(req: Request) {
   const body = typeof input.body === "string" ? input.body.trim().slice(0, 500) : "";
   const rawUrl = typeof input.url === "string" ? input.url.trim() : "";
   const url = rawUrl.startsWith("/") && !rawUrl.startsWith("//") ? rawUrl : "/";
-  if (!title) return NextResponse.json({ error: "Title is required" }, { status: 400 });
+  if (!title && !body) return NextResponse.json({ error: "Enter a title or a message" }, { status: 400 });
 
   const subscriptions: SubscriptionRow[] = [];
   for (let from = 0; ; from += 1000) {
