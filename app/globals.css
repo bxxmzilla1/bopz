@@ -203,6 +203,20 @@ button {
   background: #000;
 }
 
+.slide-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+
+.slide-thumb.hidden {
+  opacity: 0;
+}
+
 .tap-layer {
   position: absolute;
   inset: 0;

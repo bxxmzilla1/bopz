@@ -51,10 +51,27 @@ export default function VideoCard({
   const tapTimer = useRef<number | null>(null);
   const [paused, setPaused] = useState(false);
   const [bursts, setBursts] = useState<Burst[]>([]);
+  const [frameShown, setFrameShown] = useState(false);
+  const src = near && video.url ? video.url : undefined;
+
+  useEffect(() => {
+    setFrameShown(false);
+  }, [src]);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.muted = muted;
   }, [muted]);
+
+  // "playing" can fire before a frame is painted (black flash on iOS), so wait for the frame itself.
+  function handlePlaying() {
+    const el = videoRef.current;
+    if (!el || frameShown) return;
+    if ("requestVideoFrameCallback" in el) {
+      el.requestVideoFrameCallback(() => setFrameShown(true));
+    } else {
+      setFrameShown(true);
+    }
+  }
 
   useEffect(() => {
     const el = videoRef.current;
@@ -121,15 +138,19 @@ export default function VideoCard({
     <section className="slide" data-index={index}>
       <video
         ref={videoRef}
-        src={near && video.url ? video.url : undefined}
+        src={src}
         poster={near ? video.thumb_url ?? undefined : undefined}
         loop
         playsInline
         muted
-        preload={active ? "auto" : "metadata"}
+        preload={near ? "auto" : "none"}
         disablePictureInPicture
         controls={false}
+        onPlaying={handlePlaying}
       />
+      {near && video.thumb_url && (
+        <img className={frameShown ? "slide-thumb hidden" : "slide-thumb"} src={video.thumb_url} alt="" decoding="async" />
+      )}
 
       <div className="tap-layer" onClick={handleTap}>
         {bursts.map((b) => (
