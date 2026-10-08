@@ -280,7 +280,7 @@ function Dashboard({ session }: { session: Session }) {
   const [videos, setVideos] = useState<AdminVideo[]>([]);
   const [logs, setLogs] = useState<NotificationLog[]>([]);
   const [subscriberCount, setSubscriberCount] = useState<number | null>(null);
-  const [activeCount, setActiveCount] = useState<number | null>(null);
+  const [totalDevices, setTotalDevices] = useState<number | null>(null);
   const [clickCount, setClickCount] = useState<number | null>(null);
   const [resetting, setResetting] = useState<ResetTarget[]>([]);
 
@@ -297,23 +297,27 @@ function Dashboard({ session }: { session: Session }) {
 
   const refreshCounts = useCallback(async () => {
     const supabase = getSupabase();
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const [devices, clicks] = await Promise.all([
+    const [devices, clicks, settings] = await Promise.all([
       supabase.from("push_subscriptions").select("id,ip,updated_at").limit(10000),
       supabase.from("link_clicks").select("id", { count: "exact", head: true }),
+      supabase.from("admin_settings").select("devices_reset_at").eq("id", 1).maybeSingle(),
     ]);
+    const resetAt = (settings.data?.devices_reset_at as string | null | undefined) ?? null;
     if (devices.data) {
       const rows = devices.data as { id: string; ip: string | null; updated_at: string }[];
-      setSubscriberCount(uniqueByIp(rows).length);
-      setActiveCount(uniqueByIp(rows.filter((r) => r.updated_at >= weekAgo)).length);
+      // Every device still gets notifications; the counter only shows those that opened the app since the reset.
+      const since = resetAt ? new Date(resetAt).getTime() : 0;
+      setSubscriberCount(uniqueByIp(rows.filter((r) => new Date(r.updated_at).getTime() >= since)).length);
+      setTotalDevices(uniqueByIp(rows).length);
     } else {
       // The ip column may not exist yet; fall back to raw counts.
-      const [all, active] = await Promise.all([
-        supabase.from("push_subscriptions").select("id", { count: "exact", head: true }),
-        supabase.from("push_subscriptions").select("id", { count: "exact", head: true }).gte("updated_at", weekAgo),
+      const countDevices = () => supabase.from("push_subscriptions").select("id", { count: "exact", head: true });
+      const [total, active] = await Promise.all([
+        countDevices(),
+        resetAt ? countDevices().gte("updated_at", resetAt) : countDevices(),
       ]);
-      if (all.count !== null) setSubscriberCount(all.count);
-      if (active.count !== null) setActiveCount(active.count);
+      if (active.count !== null) setSubscriberCount(active.count);
+      if (total.count !== null) setTotalDevices(total.count);
     }
     if (clicks.count !== null) setClickCount(clicks.count);
   }, []);
@@ -400,7 +404,7 @@ function Dashboard({ session }: { session: Session }) {
     library: regularVideos.length,
     ads: adVideos.length,
     history: logs.length,
-    devices: subscriberCount,
+    devices: totalDevices,
   };
   const isResetting = (t: ResetTarget) => resetting.includes(t);
 
@@ -459,7 +463,7 @@ function Dashboard({ session }: { session: Session }) {
               <StatCard
                 label="Push devices"
                 value={subscriberCount ?? "–"}
-                hint={activeCount !== null ? `${activeCount} opened the app this week` : undefined}
+                hint={totalDevices !== null ? `Opened the app since the last reset · ${totalDevices} total get notifications` : undefined}
                 onReset={() => reset(["devices"])}
                 resetting={isResetting("devices")}
               />

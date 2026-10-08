@@ -237,6 +237,22 @@ create policy "videos bucket admin delete" on storage.objects
   for delete to authenticated using (bucket_id = 'videos' and public.is_admin());
 
 -- ---------------------------------------------------------------------------
+-- Admin settings: resetting the device counter only records a timestamp.
+-- ---------------------------------------------------------------------------
+create table if not exists public.admin_settings (
+  id int primary key default 1 check (id = 1),
+  devices_reset_at timestamptz
+);
+
+insert into public.admin_settings (id) values (1) on conflict (id) do nothing;
+
+alter table public.admin_settings enable row level security;
+
+drop policy if exists "admin settings admin read" on public.admin_settings;
+create policy "admin settings admin read" on public.admin_settings
+  for select to authenticated using (public.is_admin());
+
+-- ---------------------------------------------------------------------------
 -- Ads: ad videos are mixed into the feed every N regular videos.
 -- ---------------------------------------------------------------------------
 alter table public.videos add column if not exists is_ad boolean not null default false;
